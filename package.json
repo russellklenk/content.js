@@ -3,7 +3,7 @@
   "noAnalyze"    : false,
   "preferGlobal" : false,
   "main"         : "index.js",
-  "version"      : "1.1.0",
+  "version"      : "1.1.1",
   "license"      : "Public Domain",
   "author"       : "Russell Klenk <contact@russellklenk.com>",
   "description"  : "Game content pipeline for Node.js",
