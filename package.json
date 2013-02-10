@@ -1,0 +1,48 @@
+{
+  "name"         : "contentjs",
+  "noAnalyze"    : false,
+  "preferGlobal" : false,
+  "main"         : "index.js",
+  "version"      : "1.1.0",
+  "license"      : "Public Domain",
+  "author"       : "Russell Klenk <contact@russellklenk.com>",
+  "description"  : "Game content pipeline for Node.js",
+  "homepage"     : "https://github.com/russellklenk/content.js",
+  "bugs"         : "https://github.com/russellklenk/content.js/issues",
+  "contributors" : [
+    {
+      "name"  : "Russell Klenk",
+      "email" : "contact@russellklenk.com"
+    }
+  ],
+  "repository" : {
+    "type"     : "git",
+    "url"      : "https://github.com/russellklenk/content.js.git"
+  },
+  "bin" : {
+    "build"    : "./bin/build.js",
+    "publish"  : "./bin/publish.js",
+    "serve"    : "./bin/serve.js"
+  },
+  "scripts" : {
+  },
+  "keywords" : [
+    "asset",
+    "content",
+    "pipeline",
+    "game",
+    "tool"
+  ],
+  "dependencies" : {
+    "commander"  : ">=1.0.x",
+    "mime"       : ">=1.2.7"
+  },
+  "devDependencies" : {
+  },
+  "bundleDependencies" : [
+  ],
+  "engine"  : {
+    "node"  : ">=0.8",
+    "npm"   : ">=1.1.36"
+  }
+}
