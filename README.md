@@ -4,14 +4,16 @@ A streamlined, minimalistic game content pipeline built on Node.js. The library 
 
 Currently, the filesystem watching functionality is not implemented. Instead, the core functionality is exposed as a set of command-line tools for compiling resources and then archiving them up into single files for efficient transfer and loading.
 
-## INSTALLATION ##
+
+## Installation ##
 
 ```bash
 npm install -g contentjs
 ```
 This installs a number of utilities accessible from the command-line.
 
-## USAGE ##
+
+## Usage ##
 
 Content.js is a toolset, not a Node module. When installed, a number of command-line utilities become available:
 
@@ -20,7 +22,8 @@ Content.js is a toolset, not a Node module. When installed, a number of command-
 
 For each utility you can specify `--help` to see the command-line options.
 
-## PROJECT STRUCTURE ##
+
+## Project Structure ##
 
 The tools operate on a top-level entity referred to as a content project. This is nothing more than a root directory under which all source content is located. A content project has the following basic directory structure:
 
@@ -42,7 +45,8 @@ Most of the work occurs under the `packages` directory. Within the `packages` di
 
 At runtime, the 'Core' package would contain a resource named `textures/brick`, which would contain the runtime data for the platform-specific version of the resource.
 
-## RESOURCE IDENTIFIERS ##
+
+## Resource Identifiers ##
 
 Resource identifiers consist of three parts, a name, zero or more properties, and a type. This data is all encoded in the file path:
 
@@ -56,7 +60,8 @@ For example, given a root content project path `/Users/foo/project`, with a reso
  * Two properties, `battered` and `ps3`.
  * A resource type of `texture`.
 
-## PLATFORM IDENTIFIERS ##
+
+## Platform Identifiers ##
 
 Platform identifiers may be any string you wish. Edit the `platform.json` file to define your platform identifiers. This JSON file contains a single array of string values, each of which represents a single platform identifier:
 
@@ -69,11 +74,13 @@ Platform identifiers may be any string you wish. Edit the `platform.json` file t
 
 These identifiers will then be automatically recognized when they appear as part of the resource filename extension list, for example `brick.ps3.texture`.
 
-## RUNTIME ##
+
+## Runtime ##
 
 A JavaScript client runtime library can be found in the runtime directory. This library can load package files (tar format) output by the content.js publish tool. It uses the information stored in the package.manifest files to build a runtime set of content that can be accessed by name, and allows for easy asset replacement.
 
 Additionally, code is included to manage the downloading of these manifest and package files. The HTML5 IndexedDB API is used to cache downloaded packages on the client, speeding load times and allowing offline access while still allowing for content updates.
+
 
 ## TODOs ##
 
@@ -81,7 +88,8 @@ The following items remain TBD or fixed:
 
  * Need to implement the clean tool to delete all target packages.
 
-## LICENSE ##
+
+## License ##
 
 This is free and unencumbered software released into the public domain.
 
