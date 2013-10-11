@@ -504,7 +504,7 @@ function publishProject(project)
         {
             manifest.latest.packages[platform].sort(function (a, b)
                 {
-                    return String.localeCompare(a.name, b.name);
+                    return a.name.localeCompare(b.name);
                 });
         });
 

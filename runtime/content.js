@@ -707,8 +707,8 @@ var ContentJS = (function (exports)
     {
         var self          = this;
         var xhr           = new XMLHttpRequest();
-        xhr.responseType  = this.type;
         xhr.open('GET',     this.url, true);
+        xhr.responseType  = this.type;
         xhr.onload        = function (e)
             {
                 var stat  = xhr.status;
