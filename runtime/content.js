@@ -1801,7 +1801,8 @@ var ContentJS = (function (exports)
         {
             for (var i  = 0, n = packageList.length; i < n; ++i)
             {
-                if (packageList[i].unpackState !== UnpackState.COMPLETE)
+                var bundle = this.findPackage(packageList[i]);
+                if (bundle.unpackState !== UnpackState.COMPLETE)
                     return false;
             }
             return true;
@@ -1897,6 +1898,8 @@ var ContentJS = (function (exports)
         }
         catch (error)
         {
+            this.unpackQueue.shift();
+            bundle.unpackState = UnpackState.ERROR;
             this.emit('group:error', {
                 loader      : this,
                 error       : error,
@@ -1907,11 +1910,11 @@ var ContentJS = (function (exports)
                 contentSet  : bundle.contentSet,
                 packageName : bundle.friendlyName
             });
-            this.unpackQueue.shift();
-            bundle.unpackState = UnpackState.ERROR;
         }
         if (bundle.unpackIndex === count)
         {
+            this.unpackQueue.shift();
+            bundle.unpackState = UnpackState.COMPLETE;
             if (this.hasFullyLoaded(bundle.groupName))
             {
                 this.emit('group:ready', {
@@ -1923,8 +1926,6 @@ var ContentJS = (function (exports)
                     packageName : bundle.friendlyName
                 });
             }
-            this.unpackQueue.shift();
-            bundle.unpackState = UnpackState.COMPLETE;
         }
         return this;
     };
@@ -2070,7 +2071,9 @@ var ContentJS = (function (exports)
         args.platformName      = defaultValue(args.platformName,    'generic');
         args.version           = defaultValue(args.version,         'latest');
         args.background        = defaultValue(args.background,       true);
+        args.scriptPath        = defaultValue(args.scriptPath,       '');
         args.servers           = defaultValue(args.servers,          []);
+        exports.scriptPath     = args.scriptPath;
         var loader             = new ContentLoader();
         loader.applicationName = args.applicationName;
         loader.platformName    = args.platformName;
@@ -2084,6 +2087,7 @@ var ContentJS = (function (exports)
     }
 
     /// Specify the data and functions exported from the module.
+    exports.Emitter           = Emitter;
     exports.ClientCommand     = ClientCommand;
     exports.ServerCommand     = ServerCommand;
     exports.ContentServer     = ContentServer;
