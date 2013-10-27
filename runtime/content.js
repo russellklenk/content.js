@@ -1,11 +1,12 @@
 /*/////////////////////////////////////////////////////////////////////////////
 /// @summary Implements a small runtime library to manage the download, caching
 /// and extraction of content files packaged into tar archives.
+/// @author Russell Klenk (contact@russellklenk.com)
 ///////////////////////////////////////////////////////////////////////////80*/
 var ContentJS = (function (exports)
 {
-    /// Defines the command identifiers for commands that can be sent from the
-    /// ContentServer to ContentClient.
+    /// @summary Defines the command identifiers for commands that can be sent
+    /// from the @a ContentServer to @a ContentClient.
     var ClientCommand  = {
         /// Indicates that an error occurred. The message object has the
         /// following fields:
@@ -35,8 +36,8 @@ var ContentJS = (function (exports)
         RESOURCE_DATA  : 3
     };
 
-    /// Defines the command identifiers for commands that can be sent from the
-    /// ContentClient to ContentServer.
+    /// @summary Defines the command identifiers for commands that can be sent
+    /// from the @a ContentClient to @a ContentServer.
     var ServerCommand  = {
         /// Adds a server to the list of servers that provide content to the
         /// client. The message object should have a the following fields:
@@ -74,7 +75,8 @@ var ContentJS = (function (exports)
         GET_RESOURCE   : 4
     };
 
-    /// Defines the states in the process of unpacking a resource package.
+    /// @summary Defines the states that make up the process of unpacking a
+    /// resource package (a tar archive).
     var UnpackState    = {
         /// Indicates that the resource package data has been fully downloaded
         /// and needs to be parsed by the TarArchive.parse() method.
@@ -88,12 +90,12 @@ var ContentJS = (function (exports)
         ERROR          : 3
     };
 
-    /// GlobalScope will be window for the UI thread, and a worker context
-    /// for web workers. We need this because we can't use 'window' from
-    /// a web worker.
+    /// @summary GlobalScope will be window for the UI thread, and a worker
+    /// context for web workers. We need this because we can't use 'window'
+    /// from a web worker.
     var GlobalScope    = this;
 
-    /// Polyfills for the underlying storage APIs.
+    /// @summary Polyfills for the underlying storage APIs.
     var StorageAPI     = {
         /// The resolved version of window.indexedDB (for IndexedDB.)
         indexedDB      : null,
@@ -126,7 +128,7 @@ var ContentJS = (function (exports)
     StorageAPI.READ_ONLY  = StorageAPI.IDBTransaction.READ_ONLY  || 'readonly';
     StorageAPI.READ_WRITE = StorageAPI.IDBTransaction.READ_WRITE || 'readwrite';
 
-    /// A handy utility function that prevents having to write the same
+    /// @summary A handy utility function that prevents having to write the same
     /// obnoxious code everytime. The typical javascript '||' trick works for
     /// strings, arrays and objects, but it doesn't work for booleans or
     /// integer values.
@@ -138,12 +140,19 @@ var ContentJS = (function (exports)
         return (value !== undefined) ? value : theDefault;
     }
 
-    /// Constructor for the Emitter class, which adds EventEmitter-like
+    /// @summary Constructor for the Emitter class, which adds EventEmitter-like
     /// functionality for JavaScript in the browser. The Emitter class is not
     /// generally used directly, instead you Emitter.mixin(yourClass).
-    var Emitter = function () {};
+    var Emitter = function ()
+    {
+        if (!(this instanceof Emitter))
+            return new Emitter();
 
-    /// Adds the methods of the Emitter type to the prototype of another type.
+        return this;
+    };
+
+    /// @summary Adds the methods of the Emitter type to the prototype of
+    /// another type.
     /// @param target The constructor function of the target type.
     Emitter.mixin = function (target)
     {
@@ -152,7 +161,7 @@ var ContentJS = (function (exports)
             target.prototype[props[i]] = Emitter.prototype[props[i]];
     };
 
-    /// Registers an event listener for a named event.
+    /// @summary Registers an event listener for a named event.
     /// @param event A String specifying the name of the event to listen for.
     /// @param callback The callback function to register.
     /// @return A reference to the calling context.
@@ -164,7 +173,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Removes a specific event listener.
+    /// @summary Removes a specific event listener.
     /// @param event A String specifying the name of the event for which the
     /// specified callback is registered.
     /// @param callback The callback function to remove.
@@ -177,7 +186,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Removes all listeners for a given event.
+    /// @summary Removes all listeners for a given event.
     /// @param event A String specifying the name of the event for which all
     /// registered listeners will be removed.
     /// @return A reference to the calling context.
@@ -188,8 +197,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Emits a named event, immediately invoking all registered listeners. Any
-    /// additional arguments aside from @a event are passed to the listeners.
+    /// @summary Emits a named event, immediately invoking all registered
+    /// listeners. Any additional arguments aside from @a event are passed to
+    /// the listeners.
     /// @param event A String specifying the name of the event being raised.
     /// @return A reference to the calling context.
     Emitter.prototype.emit = function (event)
@@ -231,13 +241,14 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// An object defining the various types of records that may be found within
-    /// a tar archive file in the ustar format.
-    var TarEntry  = function () {
+    /// @summary An object defining the various types of records that may be
+    /// found within a tar archive file in the ustar format.
+    /// @return A reference to the new TarEntry instance.
+    var TarEntry  = function ()
+    {
         if (!(this instanceof TarEntry))
-        {
             return new TarEntry();
-        }
+
         this.metaOffset = 0;    // byte offset of the start of the header
         this.dataOffset = 0;    // byte offset of the start of the data
         this.name       = null; // a string; the name of the entry
@@ -256,36 +267,35 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// The record represents an actual file.
+    /// @summary The record represents an actual file.
     TarEntry.FILE      = 0;
 
-    /// The record represents a hard link.
+    /// @summary The record represents a hard link.
     TarEntry.HARDLINK  = 1;
 
-    /// The record represents a symbolic link.
+    /// @summary The record represents a symbolic link.
     TarEntry.SYMLINK   = 2;
 
-    /// The record represents a character device.
+    /// @summary The record represents a character device.
     TarEntry.CHARACTER = 3;
 
-    /// The record represents a block device.
+    /// @summary The record represents a block device.
     TarEntry.BLOCK     = 4;
 
-    /// The record represents a directory.
+    /// @summary The record represents a directory.
     TarEntry.DIRECTORY = 5;
 
-    /// The record represents a named pipe.
+    /// @summary The record represents a named pipe.
     TarEntry.FIFO      = 6;
 
-    /// Constructor function for a type that represents the contents of a ustar
-    /// tar archive file. All operations execute synchronously.
+    /// @summary Constructor function for a type that represents the contents
+    /// of a ustar tar archive file. All operations execute synchronously.
     /// @return A reference to the new TarArchive.
     var TarArchive = function ()
     {
         if (!(this instanceof TarArchive))
-        {
             return new TarArchive();
-        }
+
         this.buffer     = null; // the underlying ArrayBuffer
         this.view       = null; // A Uint8Array for the entire archive
         this.entryList  = [];   // list of files for access by index
@@ -293,19 +303,19 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// 2^9 = 512 which corresponds to the block size. If the block size is
-    /// changed then this constant must also be adjusted.
+    /// @summary 2^9 = 512 which corresponds to the block size. If the block
+    /// size is changed then this constant must also be adjusted.
     TarArchive.BLOCK_SHIFT = 9;
 
-    /// A constant specifying the block size to which all entry data is
-    /// rounded up.
+    /// @summary A constant specifying the block size to which all entry data
+    /// is rounded up.
     TarArchive.BLOCK_SIZE  = 512;
 
-    /// A constant specifying the size of a header entry, in bytes.
+    /// @summary A constant specifying the size of a header entry, in bytes.
     TarArchive.HEADER_SIZE = 512;
 
-    /// Checks an archive entry record to determine whether it indicates a
-    /// standard file entry (hard links and symbolic links are not included.)
+    /// @summary Checks an archive entry record to determine whether it
+    /// indicates a standard file entry, not including hard and symbolic links.
     /// @param entry The archive header entry to inspect.
     /// @return true if the entry indicates a normal file.
     TarArchive.prototype.isFile = function (entry)
@@ -313,8 +323,8 @@ var ContentJS = (function (exports)
         return (TarEntry.FILE  == entry.type);
     };
 
-    /// Checks an archive entry record to determine whether it indicates a
-    /// directory entry.
+    /// @summary Checks an archive entry record to determine whether it
+    /// indicates a directory entry.
     /// @param entry The archive header entry to inspect.
     /// @return true if the entry indicates a directory.
     TarArchive.prototype.isDirectory = function (entry)
@@ -323,9 +333,9 @@ var ContentJS = (function (exports)
         return (TarEntry.DIRECTORY  == entry.type || entry.name[l] == '/');
     };
 
-    /// Checks an archive entry record to determine whether it indicates the
-    /// end of the archive. Tar archives are terminated with two entries of
-    /// zero bytes.
+    /// @summary Checks an archive entry record to determine whether it
+    /// indicates the end of the archive. Tar archives are terminated with two
+    /// entries of zero bytes.
     /// @param entry The archive header entry to inspect.
     /// @return true if the entry indicates the end of the archive.
     TarArchive.prototype.isEndOfArchive = function (entry)
@@ -333,8 +343,8 @@ var ContentJS = (function (exports)
         return (null == entry.name || 0 == entry.name.length);
     };
 
-    /// Computes the byte offset of the next record given the offset and size
-    /// of the data for the previous entry.
+    /// @summary Computes the byte offset of the next record given the offset
+    /// and size of the data for the previous entry.
     /// @param dataOffset The byte offset of the data for the previous entry.
     /// @param dataSize The size of the previous entry, in bytes.
     TarArchive.prototype.nextHeaderOffset = function (dataOffset, dataSize)
@@ -344,8 +354,8 @@ var ContentJS = (function (exports)
         return dataOffset + ss * bs;
     };
 
-    /// Reads @a length ASCII characters (each one byte) from the buffer
-    /// starting at @a offset and returns the result as a string.
+    /// @summary Reads @a length ASCII characters (each one byte) from the
+    /// buffer starting at @a offset and returns the result as a string.
     /// @param view The Uint8Array from which data will be read.
     /// @param offset The byte offset at which to begin reading data.
     /// @param length The number of bytes to read.
@@ -363,8 +373,8 @@ var ContentJS = (function (exports)
         return  s;
     };
 
-    /// Reads @a length ASCII characters (each one byte) from the buffer
-    /// starting at @a offset, interpreting them as octal digits.
+    /// @summary Reads @a length ASCII characters (each one byte) from the
+    /// buffer starting at @a offset, interpreting them as octal digits.
     /// @param view The Uint8Array from which data will be read.
     /// @param offset The byte offset at which to begin reading data.
     /// @param length The number of bytes to read.
@@ -385,8 +395,8 @@ var ContentJS = (function (exports)
         return  n;
     };
 
-    /// Reads a single header entry from the buffer starting at the specified
-    /// byte offset.
+    /// @summary Reads a single header entry from the buffer starting at the
+    /// specified byte offset.
     /// @param view The Uint8Array from which data will be read.
     /// @param offset The byte offset at which to begin reading data.
     TarArchive.prototype.readHeader = function (view, offset)
@@ -430,8 +440,8 @@ var ContentJS = (function (exports)
         return e;
     };
 
-    /// Parses the contents of a tar archive to extract information about the
-    /// entries contained within the archive.
+    /// @summary Parses the contents of a tar archive to extract information
+    /// about the entries contained within the archive.
     /// @param types An array of values from TarEntry specifying the types of
     /// archive entries to include in the entry list.
     /// @param buffer An ArrayBuffer instance containing the archive data.
@@ -486,7 +496,7 @@ var ContentJS = (function (exports)
         return this;
     }
 
-    /// Retrieves an entry by name (path).
+    /// @summary Retrieves an entry by name (path).
     /// @param name The name (path) of the entry to locate.
     /// @return A reference to the specified entry, or undefined.
     TarArchive.prototype.getEntryByName = function (name)
@@ -494,7 +504,7 @@ var ContentJS = (function (exports)
         return this.entryTable[name];
     };
 
-    /// Retrieves an entry by index.
+    /// @summary Retrieves an entry by index.
     /// @param index The zero-based index of the entry to retrieve.
     /// @return A reference to the specified entry.
     TarArchive.prototype.getEntryByIndex = function (index)
@@ -502,7 +512,8 @@ var ContentJS = (function (exports)
         return this.entryList[index];
     };
 
-    /// Retrieves a DataView view of the data associated with an entry.
+    /// @summary Retrieves a DataView view of the data associated with an entry
+    /// in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A DataView view of the data associated with @a entry.
     TarArchive.prototype.dataAsDataView = function (entry)
@@ -511,7 +522,8 @@ var ContentJS = (function (exports)
         return new DataView(this.buffer, offset, entry.size);
     }
 
-    /// Retrieves an Int8Array view of the data associated with an entry.
+    /// @summary Retrieves an Int8Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return An Int8Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsInt8Array = function (entry)
@@ -520,7 +532,8 @@ var ContentJS = (function (exports)
         return new Int8Array(this.buffer, offset, entry.size);
     }
 
-    /// Retrieves a Uint8Array view of the data associated with an entry.
+    /// @summary Retrieves a Uint8Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A Uint8Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsUint8Array = function (entry)
@@ -529,7 +542,8 @@ var ContentJS = (function (exports)
         return new Uint8Array(this.buffer,  offset, entry.size);
     };
 
-    /// Retrieves a Uint8ClampedArray view of the data associated with an entry.
+    /// @summary Retrieves a Uint8ClampedArray view of the data associated with
+    /// an entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A Uint8ClampedArray view of the data associated with @a entry.
     TarArchive.prototype.dataAsUint8ClampedArray = function (entry)
@@ -538,7 +552,8 @@ var ContentJS = (function (exports)
         return new Uint8Array(this.buffer,  offset, entry.size);
     };
 
-    /// Retrieves an Int16Array view of the data associated with an entry.
+    /// @summary Retrieves an Int16Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return An Int16Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsInt16Array = function (entry)
@@ -547,7 +562,8 @@ var ContentJS = (function (exports)
         return new Int16Array(this.buffer,  offset, entry.size / 2);
     }
 
-    /// Retrieves a Uint16Array view of the data associated with an entry.
+    /// @summary Retrieves a Uint16Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A Uint16Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsUint16Array = function (entry)
@@ -556,7 +572,8 @@ var ContentJS = (function (exports)
         return new Uint16Array(this.buffer, offset, entry.size / 2);
     };
 
-    /// Retrieves an Int32Array view of the data associated with an entry.
+    /// @summary Retrieves an Int32Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return An Int32Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsInt32Array = function (entry)
@@ -565,7 +582,8 @@ var ContentJS = (function (exports)
         return new Int32Array(this.buffer,  offset, entry.size / 4);
     }
 
-    /// Retrieves a Uint32Array view of the data associated with an entry.
+    /// @summary Retrieves a Uint32Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A Uint32Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsUint32Array = function (entry)
@@ -574,16 +592,18 @@ var ContentJS = (function (exports)
         return new Uint32Array(this.buffer, offset, entry.size / 4);
     };
 
-    /// Retrieves a Float32Array view of the data associated with an entry.
+    /// @summary Retrieves a Float32Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A Float32Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsFloat32Array = function (entry)
     {
         var offset = this.view.byteOffset  + entry.dataOffset;
         return new Float32Array(this.buffer, offset, entry.size / 4);
-    }
+    };
 
-    /// Retrieves a Float64Array view of the data associated with an entry.
+    /// @summary Retrieves a Float64Array view of the data associated with an
+    /// entry in the archive.
     /// @param entry The entry for which the data is to be retrieved.
     /// @return A Float64Array view of the data associated with @a entry.
     TarArchive.prototype.dataAsFloat64Array = function (entry)
@@ -592,20 +612,247 @@ var ContentJS = (function (exports)
         return new Float64Array(this.buffer, offset, entry.size / 8);
     };
 
-    /// Constructor function for an object representing a set of content.
-    /// Content items are accessible by name or by index.
+    /// @summary Constructor function for an object representing a set of
+    /// content that is somehow related. Content relationships are determined
+    /// by the application. Content items are accessible by name or by index.
     /// @return A reference to the new ContentSet instance.
     var ContentSet = function ()
     {
         if (!(this instanceof ContentSet))
-        {
             return new ContentSet();
-        }
+
+        this.content        = [];
+        this.packages       = [];
+        this.emptyList      = [];
+        this.byTagTable     = {};
+        this.byNameTable    = {};
+        this.byTypeTable    = {};
+        this.byPackageTable = {};
         return this;
     };
-    Emitter.mixin(ContentSet);
 
-    /// Represents a single outstanding cache request against a DataStore.
+    /// @summary Removes all items from the content set.
+    /// @return The ContentSet.
+    ContentSet.prototype.clear = function ()
+    {
+        this.content        = [];
+        this.packages       = [];
+        this.byTagTable     = {};
+        this.byNameTable    = {};
+        this.byTypeTable    = {};
+        this.byPackageTable = {};
+        return this;
+    };
+
+    /// @summary Adds an item to the content set. This method is typically
+    /// called during unpacking, after the content item has been fully loaded.
+    /// @param content The Content item to add.
+    /// @return The zero-based index of the content item.
+    ContentSet.prototype.addContent = function (content)
+    {
+        var index = this.content.length;
+
+        // append to the content list.
+        content.listIndex = index;
+        this.content.push(content);
+
+        // add the source package name if it is currently unknown.
+        if (this.packages.indexOf(content.sourcePackage) < 0)
+            this.packages.push(content.sourcePackage);
+
+        // allow the content to be looked up by name.
+        var nameList = this.byNameTable[content.name];
+        if (nameList === undefined)
+        {
+            nameList = [content];
+            this.byNameTable[content.name] = nameList;
+        }
+        else nameList.push(content);
+
+        // allow the content to be looked up by type.
+        var typeList = this.byTypeTable[content.type];
+        if (typeList === undefined)
+        {
+            typeList = [content];
+            this.byTypeTable[content.type] = typeList;
+        }
+        else typeList.push(content);
+
+        // allow the content to be looked up by source package.
+        var packList = this.byPackageTable[content.sourcePackage];
+        if (packList === undefined)
+        {
+            packList = [content];
+            this.byPackageTable[content.sourcePackage] = packList;
+        }
+        else packList.push(content);
+
+        // allow the content to be looked up by tag.
+        var tags   = content.tags;
+        for (var i = 0, n = tags.length; i < n; ++i)
+        {
+            var tagList = this.byTagTable[tags[i]];
+            if (tagList === undefined)
+            {
+                tagList = [content];
+                this.byTagTable[tags[i]] = tagList;
+            }
+            else tagList.push(content);
+        }
+
+        return index;
+    };
+
+    /// @summary Retrieves the set of all content with a given name.
+    /// @param name The name of the content item to retrieve.
+    /// @return An array of all content items with the specified name. Do not
+    /// modify the returned array.
+    ContentSet.prototype.allContentByName = function (name)
+    {
+        var nameList   = this.byNameTable[name];
+        if (nameList === undefined)
+            nameList   = this.emptyList;
+        return nameList;
+    };
+
+    /// @summary Retrieves the set of all content with a given type.
+    /// @param type A string specifying the type of content to retrieve.
+    /// @return An array of all content items with the specified type. Do not
+    /// modify the returned array.
+    ContentSet.prototype.allContentByType = function (type)
+    {
+        var typeList   = this.byTypeTable[type];
+        if (typeList === undefined)
+            typeList   = this.emptyList;
+        return typeList;
+    };
+
+    /// @summary Retrieves the set of all content associated with a given tag.
+    /// @param tag The string metadata tag.
+    /// @return An array of all content items with the specified tag. Do not
+    /// modify the returned array.
+    ContentSet.prototype.allContentWithTag = function (tag)
+    {
+        var itemList   = this.byTagTable[tag];
+        if (itemList === undefined)
+            itemList   = this.emptyList;
+        return itemList;
+    };
+
+    /// @summary Retrieves the set of all content from a given source package.
+    /// @param packageName The name of the content package.
+    /// @return An array of all content items loaded from the specified source
+    /// package. Do not modify the returned array.
+    ContentSet.prototype.allContentFromPackage = function (packageName)
+        {
+        var packList   = this.byPackageTable[packageName];
+        if (packList === undefined)
+            packList   = this.emptyList;
+        return packList;
+    };
+
+    /// @summary Retrieve the first content item with a given name that also
+    /// optionally has the specified tag.
+    /// @param name The content item name to search for.
+    /// @param filterTag An optional value that can be used to narrow the
+    /// search to a single item. If undefined, and multiple content items match
+    /// the specified name, the first matching item is returned.
+    /// @return The Content matching the search criteria, or undefined.
+    ContentSet.prototype.contentByName = function (name, filterTag)
+    {
+        // ex. var content = myContent.contentByName('foo/bar', language);
+        var nameList   = this.byNameTable[name];
+        if (nameList === undefined)
+            return undefined;
+
+        if (filterTag)
+        {
+            for (var i = 0, n = nameList.length; i < n; ++i)
+            {
+                if (nameList[i].tags.indexOf(filterTag) >= 0)
+                    return nameList[i];
+            }
+            return undefined;
+        }
+        else return nameList[0];
+    };
+
+    /// @summary Replaces a given content item with a new item. If the
+    /// specified content item does not exist, the new item is added. The
+    /// content index is guaranteed to remain the same for existing items. Both
+    /// items must represent the same content and have the same name, type and
+    /// tags.
+    /// @param content The existing Content item.
+    /// @param newContent The Content item to replace @a content.
+    /// @return The zero-based index of the content item.
+    ContentSet.prototype.replaceContent = function (content, newContent)
+    {
+        var index = this.content.indexOf(content);
+        if (index < 0)
+            index = this.addContent(newContent);
+        else
+            index = this.replaceContentAt(index, newContent);
+
+        return index;
+    };
+
+    /// @summary Replaces a given content item with a new item, given the zero-
+    /// based index of the item to replace. The content index is guaranteed to
+    /// remain the same for existing items. Both items must represent the same
+    /// content, and have the same name, type and tags.
+    /// @param index The zero-based index of the item to replace, as returned
+    /// by the @a ContentSet.addContent() method.
+    /// @param newContent The Content item to replace the existing item.
+    /// @return The zero-based index of the content item.
+    ContentSet.prototype.replaceContentAt = function (index, newContent)
+    {
+        if (index < 0 || index >= this.content.length)
+        {
+            index = this.addContent(newContent)
+            return index;
+        }
+
+        var oldContent        = this.content[index];
+        if (oldContent.name !== newContent.name ||
+            oldContent.type !== newContent.type)
+            throw new Error('Cannot replace content; name or type mismatch.');
+
+        // update the primary content list.
+        this.content[index] = newContent;
+
+        // make sure to go through the tables and update them.
+        var nameList        = this.byNameTable[oldContent.name];
+        var nameIndex       = nameList.indexOf(oldContent);
+        nameList[nameIndex] = newContent;
+
+        var typeList        = this.byTypeTable[oldContent.type];
+        var typeIndex       = typeList.indexOf(oldContent);
+        typeList[typeIndex] = newContent;
+
+        var packList        = this.byPackageTable[oldContent.sourcePackage];
+        var packIndex       = packList.indexOf(oldContent);
+        packList[packIndex] = newContent;
+
+        var keyList  = Object.keys(this.byTagTable);
+        var keyCount = keyList.length;
+        for (var i = 0; i < keyCount; ++i)
+        {
+            var tagList   = this.byTagTable[keyList[i]];
+            var tagIndex  = tagList.indexOf(oldContent);
+            if (tagIndex >= 0)
+            {
+                if (newContent.tags.indexOf(keyList[i]) >= 0)
+                    tagList[tagIndex] = newContent;
+                else
+                    tagList[tagIndex].splice(tagIndex, 1);
+            }
+        }
+        // @note: won't pick up any new tags, but that's okay.
+        return index;
+    };
+
+    /// @summary Constructor function for a type representing a single
+    /// outstanding cache request against a DataStore.
     /// @param store The DataStore instance that issued the request.
     /// @param key The name of the resource being requested. This is typically
     /// the path and filename to the resource.
@@ -614,13 +861,12 @@ var ContentJS = (function (exports)
     /// @param type A string specifying the desired interpretation of the data
     /// returned by the server. May be one of 'blob', 'json', 'text',
     /// 'document' or 'arraybuffer'. An empty string corresponds to 'text'.
-    /// @return The resource request object.
+    /// @return A reference to the new ResourceRequest instance.
     var ResourceRequest = function (store, key, url, type)
     {
         if (!(this instanceof ResourceRequest))
-        {
             return new ResourceRequest(store, key, url);
-        }
+
         this.api     = StorageAPI;
         this.key     = key;
         this.url     = url;
@@ -631,10 +877,10 @@ var ContentJS = (function (exports)
     };
     Emitter.mixin(ResourceRequest);
 
-    /// Attempts to retrieve the resource from the underlying data store. If
-    /// the resource is not present in the data store, the resource is
-    /// requested from the server. If the resource is in the cache, the 'data'
-    /// event is emitted with the data loaded from the cache.
+    /// @summary Attempts to retrieve the resource from the underlying data
+    /// store. If the resource is not present in the data store, the resource
+    /// is requested from the server. If the resource is in the cache, the
+    /// 'data' event is emitted with the data loaded from the cache.
     /// @return A reference to the ResourceRequest.
     ResourceRequest.prototype.queryDataStore = function ()
     {
@@ -664,9 +910,10 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Attempts to cache downloaded data in the data store. Once the operation
-    /// completes (whether it is successful or not) the 'data' event is emitted
-    /// with the downloaded data; data is not re-loaded from the data store.
+    /// @summary Attempts to cache downloaded data in the data store. Once the
+    /// operation completes (whether it is successful or not) the 'data' event
+    /// is emitted with the downloaded data; data is not re-loaded from the
+    /// data store.
     /// @param info A ProgressEvent instance specifying the data size.
     /// @param data The resource data downloaded from the server.
     /// @return A reference to the ResourceRequest.
@@ -697,9 +944,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Attempts to download data from the server and cache it locally. If an
-    /// error occurs, the 'error' event is emitted with information about the
-    /// error; otherwise, 'progress' events are emitted as the download
+    /// @summary Attempts to download data from the server and cache it locally.
+    /// If an error occurs, the 'error' event is emitted with information about
+    /// the error; otherwise, 'progress' events are emitted as the download
     /// progresses. Once the download completes, the data is cached locally
     /// before the request is completed and the 'data' event emitted.
     /// @return A reference to the ResourceRequest.
@@ -708,7 +955,7 @@ var ContentJS = (function (exports)
         var self          = this;
         var xhr           = new XMLHttpRequest();
         xhr.open('GET',     this.url, true);
-        xhr.responseType  = this.type;
+        xhr.responseType  = this.type;  // must set after open for Firefox...
         xhr.onload        = function (e)
             {
                 var stat  = xhr.status;
@@ -735,7 +982,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Executes the request if it has not already been started.
+    /// @summary Executes the request if it has not already been started.
     /// @param checkCache Specify true to first check the cache for the
     /// requested data, or false to skip the cache and download the resource.
     /// @return A reference to the ResourceRequest.
@@ -757,16 +1004,16 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Constructor function for the DataStore type backed by the indexedDB
-    /// set of APIs. See http://www.w3.org/TR/IndexedDB/ for details.
+    /// @summary Constructor function for the DataStore type backed by the
+    /// indexedDB set of APIs. See http://www.w3.org/TR/IndexedDB/ for details.
     /// This type implements the Emitter interface.
     /// @param name The name of the application data store.
+    /// @return A reference to the new DataStore instance.
     var DataStore = function (name)
     {
         if (!(this instanceof DataStore))
-        {
             return new DataStore(name);
-        }
+
         this.api     = StorageAPI; // local alias for global StorageAPI
         this.db      = null;       // the indexedDB database connection
         this.name    = name;       // the name of the data store
@@ -775,32 +1022,33 @@ var ContentJS = (function (exports)
     };
     Emitter.mixin(DataStore);
 
-    /// The current version of the database schema.
+    /// @summary The current version of the database schema.
     DataStore.VERSION     = 1;
 
-    /// The name of the IDBObjectStore for storing entry metadata.
+    /// @summary The name of the IDBObjectStore for storing entry metadata.
     DataStore.METADATA    = 'metadata';
 
-    /// The name of the IDBObjectStore for storing raw file data.
+    /// @summary The name of the IDBObjectStore for storing raw file data.
     DataStore.FILEDATA    = 'filedata';
 
-    /// An array of object store names. Useful when creating transactions.
+    /// @summary An array of object store names. Useful when creating
+    /// transactions.
     DataStore.STORE_NAMES =
     [
         DataStore.METADATA,
         DataStore.FILEDATA
     ];
 
-    /// Deletes all data stored in a particular data store instance by dropping
-    /// the underlying database.
+    /// @summary Deletes all data stored in a particular data store instance by
+    /// dropping the underlying database.
     /// @param name The name of the data store to delete.
     DataStore.deleteStore = function (name)
     {
         StorageAPI.indexedDB.deleteDatabase(name);
     };
 
-    /// Creates the underlying IDBObjectStore instances within the data store.
-    /// This is an internal function not intended for public use.
+    /// @summary Creates the underlying IDBObjectStore instances within the
+    /// data store. This is an internal function not intended for public use.
     /// @param db The IDBDatabase where the object stores will be created.
     DataStore.prototype.createStorageContainers = function (db)
     {
@@ -808,8 +1056,8 @@ var ContentJS = (function (exports)
         db.createObjectStore(DataStore.FILEDATA);
     };
 
-    /// Handles the onupgradeneeded event raised when the database schema
-    /// changes. This is an internal function not intended for public use.
+    /// @summary Handles the onupgradeneeded event raised when the database
+    /// schema changes. This is an internal function not for public use.
     /// @param event An event conforming to IDBVersionChangeEvent interface.
     DataStore.prototype.handleUpgrade = function (event)
     {
@@ -818,8 +1066,8 @@ var ContentJS = (function (exports)
         this.createStorageContainers(db);
     };
 
-    /// Handles the onerror event raised when the database cannot be opened.
-    /// This is an internal function not intended for public use.
+    /// @summary Handles the onerror event raised when the database cannot be
+    /// opened. This is an internal function not intended for public use.
     /// @param event An event conforming to the Event interface.
     DataStore.prototype.handleOpenError = function (event)
     {
@@ -827,8 +1075,8 @@ var ContentJS = (function (exports)
         this.emit('error', this, err);
     };
 
-    /// Handles the onsuccess event raised when the database is opened.
-    /// This is an internal function not intended for public use.
+    /// @summary Handles the onsuccess event raised when the database is
+    /// opened. This is an internal function not intended for public use.
     /// @param event An event conforming to the Event interface.
     DataStore.prototype.handleOpenSuccess = function (event)
     {
@@ -865,9 +1113,9 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Opens a connection to the data store. If an error occurs, the 'error'
-    /// event is emitted. When the data store is ready, the 'ready' event is
-    /// emitted.
+    /// @summary Opens a connection to the data store. If an error occurs, the
+    /// 'error' event is emitted. When the data store is ready, the 'ready'
+    /// event is emitted.
     /// @return A reference to the DataStore instance.
     DataStore.prototype.open = function ()
     {
@@ -880,10 +1128,10 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Closes the connection to the underlying data store. Any pending
-    /// operations will complete before the connection is fully closed. Emits
-    /// the 'closing' event to indicate that no new operations should be
-    /// started.
+    /// @summary Closes the connection to the underlying data store. Any
+    /// pending operations will complete before the connection is fully closed.
+    /// The 'closing' event is emitted to indicate that no new operations
+    /// should be started.
     /// @return A reference to the IDBDataStore instance.
     DataStore.prototype.close = function ()
     {
@@ -895,8 +1143,8 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Creates a request to resolve a resource against this data store. The
-    /// request is not started.
+    /// @summary Creates a request to resolve a resource against this data
+    /// store. The request is not started.
     /// @param server The URL of the content server to download from if the
     /// requested resource does not exist in the data store.
     /// @param name The path and filename portion of the resource name.
@@ -913,15 +1161,15 @@ var ContentJS = (function (exports)
         return new ResourceRequest(this, name, url, responseType);
     };
 
-    /// Constructor function for the ContentServer type, which maintains global
-    /// state for outstanding content requests and manages background
-    /// downloading of data files.
+    /// @summary Constructor function for the ContentServer type, which
+    /// maintains global state for outstanding content requests and manages
+    /// background downloading of data files.
+    /// @return A reference to the new ContentServer instance.
     var ContentServer = function ()
     {
         if (!(this instanceof ContentServer))
-        {
             return new ContentServer();
-        }
+
         this.dataStores       = {};   // name => DataStore
         this.contentServers   = [];   // set of registered content server URLs
         // @note: don't automatically add the server representing our origin.
@@ -930,7 +1178,7 @@ var ContentJS = (function (exports)
     };
     Emitter.mixin(ContentServer);
 
-    /// Searches for a content server record based on the server URL.
+    /// @summary Searches for a content server record based on the server URL.
     /// @param url A string specifying the root server URL.
     /// @return The server record, or null.
     ContentServer.prototype.findContentServer = function (url)
@@ -945,7 +1193,7 @@ var ContentJS = (function (exports)
         return null;
     };
 
-    /// Adds a content server to the list of registered servers.
+    /// @summary Adds a content server to the list of registered servers.
     /// @param url A string specifying the root server URL.
     /// @return A reference to the ContentServer instance.
     ContentServer.prototype.addContentServer = function (url)
@@ -960,7 +1208,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Removes a content server from the list of registered servers.
+    /// @summary Removes a content server from the list of registered servers.
     /// @param url A string specifying the root server URL.
     /// @return A reference to the ContentServer instance.
     ContentServer.prototype.removeContentServer = function (url)
@@ -978,8 +1226,8 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Selects a content server URL to use for a content download. The server
-    /// with the lowest current load value is selected.
+    /// @summary Selects a content server URL to use for a content download.
+    /// The server with the lowest current load value is selected.
     /// @return An object with serverUrl and loadValue properties that
     /// represent the selected server.
     ContentServer.prototype.chooseContentServer = function ()
@@ -1001,7 +1249,7 @@ var ContentJS = (function (exports)
             return null;
     };
 
-    /// Requests and begins loading a resource.
+    /// @summary Requests and begins loading a resource.
     /// @param args An object specifying the arguments associated with the
     /// GET_RESOURCE request.
     /// @param args.requestId An application-defined identifier for the
@@ -1066,8 +1314,8 @@ var ContentJS = (function (exports)
         return request.start(returnCached);
     };
 
-    /// Opens an existing named data store, or creates a new one if none with
-    /// the specified name exists.
+    /// @summary Opens an existing named data store, or creates a new one if
+    /// none with the specified name exists.
     /// @param name The name of the data store to create or open.
     /// @return A reference to the ContentServer.
     ContentServer.prototype.createDataStore = function (name)
@@ -1082,9 +1330,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Queues a data store for deletion. The data store is deleted in its
-    /// entirety as soon as all open connections have been closed. If the data
-    /// store is currently open, its connection is closed after any pending
+    /// @summary Queues a data store for deletion. The data store is deleted in
+    /// its entirety as soon as all open connections have been closed. If the
+    /// data store is currently open, its connection is closed after any pending
     /// operations have been completed.
     /// @param name The name of the data store to close and delete.
     /// @return A reference to the ContentServer.
@@ -1096,8 +1344,8 @@ var ContentJS = (function (exports)
         return this;
     }
 
-    /// Handles the notification from a DataStore that it is ready to be
-    //// accessed for queries and caching.
+    /// @summary Handles the notification from a DataStore that it is ready to
+    /// be accessed for queries and caching.
     /// @param store The DataStore instance that raised the event.
     ContentServer.prototype.handleDataStoreReady = function (store)
     {
@@ -1110,7 +1358,8 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Handles the notification from a DataStore that an error occurred.
+    /// @summary Handles the notification from a DataStore that an error
+    /// occurred while processing a request.
     /// @param store The DataStore instance that raised the event.
     /// @param error Information about the error that occurred.
     ContentServer.prototype.handleDataStoreError = function (store, error)
@@ -1118,8 +1367,8 @@ var ContentJS = (function (exports)
         this.emit('error', this, error);
     };
 
-    /// Handles the notification from a DataStore that it is closing and
-    /// is no longer safe to access.
+    /// @summary Handles the notification from a DataStore that it is closing
+    /// and is no longer safe to access.
     /// @param store The DataStore instance that raised the event.
     ContentServer.prototype.handleDataStoreClosing = function (store)
     {
@@ -1129,8 +1378,8 @@ var ContentJS = (function (exports)
         delete this.dataStores[store.name];
     };
 
-    /// Handles notification from a ResourceRequest instance that the data has
-    /// been retrieved, either from the cache or from the server.
+    /// @summary Handles notification from a ResourceRequest instance that the
+    /// data has been retrieved, either from the cache or from the server.
     /// @param req The ResourceRequest instance that raised the event.
     /// @param data The requested data. May be an Object, ArrayBuffer, etc.
     ContentServer.prototype.handleRequestData = function (req, data)
@@ -1150,8 +1399,8 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Handles notification from a ResourceRequest instance that an error
-    /// occurred while downloading data from the server.
+    /// @summary Handles notification from a ResourceRequest instance that an
+    /// error occurred while downloading data from the server.
     /// @param req The ResourceRequest instance that raised the event.
     /// @param error Status text describing the error.
     ContentServer.prototype.handleRequestError = function (req, error)
@@ -1164,8 +1413,8 @@ var ContentJS = (function (exports)
         this.emit('error', this, error, req.clientId);
     };
 
-    /// Handles notification from a ResourceRequest instance that progress has
-    /// been made while downloading data from the server.
+    /// @summary Handles notification from a ResourceRequest instance that
+    /// progress has been made while downloading data from the server.
     /// @param req The ResourceRequest instance that raised the event.
     /// @param info A ProgressEvent instance containing download progress.
     ContentServer.prototype.handleRequestProgress = function (req, info)
@@ -1188,7 +1437,7 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Handles a message received from a ContentClient instance.
+    /// @summary Handles a message received from a ContentClient instance.
     /// @param data The message data received from the client.
     ContentServer.prototype.handleClientMessage = function (data)
     {
@@ -1215,8 +1464,8 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Constructor function for a type that communicates with a content server
-    /// running in the background as a Web Worker.
+    /// @summary Constructor function for a type that communicates with a
+    /// content server running in the background as a Web Worker.
     /// @return A reference to the WorkerServer.
     var WorkerServer = function ()
     {
@@ -1232,7 +1481,7 @@ var ContentJS = (function (exports)
     };
     Emitter.mixin(WorkerServer);
 
-    /// Starts the content server running on a background thread.
+    /// @summary Starts the content server running on a background thread.
     /// @return A reference to the WorkerServer.
     WorkerServer.prototype.startup = function ()
     {
@@ -1241,8 +1490,8 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Immediately terminates the content server and background thread. Any
-    /// pending requests are cancelled.
+    /// @summary Immediately terminates the content server and background
+    /// thread. Any pending requests are cancelled.
     /// @return A reference to the WorkerServer.
     WorkerServer.prototype.shutdown = function ()
     {
@@ -1254,8 +1503,8 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Handles a message received from the content server's worker thread.
-    /// This is an internal method that is not part of the public API.
+    /// @summary Handles a message received from the content server's worker
+    /// thread. This is an internal method that is not part of the public API.
     /// @param event An Event whose data field specifies the message object.
     WorkerServer.prototype.handleServerMessage = function (event)
     {
@@ -1280,8 +1529,9 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Adds a URL to the list of servers used for downloading application
-    /// resources, allowing multiple resources to be downloaded in parallel.
+    /// @summary Adds a URL to the list of servers used for downloading
+    /// application resources, allowing multiple resources to be downloaded in
+    /// parallel.
     /// @param url The URL of the content server to add. If the origin is not
     /// the same as that of the requestor, the server must support CORS.
     WorkerServer.prototype.addServer = function (url)
@@ -1292,8 +1542,9 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Removes a URL from the list of servers used for downloading application
-    /// resources. Pending requests against this server will not be cancelled.
+    /// @summary Removes a URL from the list of servers used for downloading
+    /// application resources. Pending requests against this server will not be
+    /// cancelled.
     /// @param url The URL of the content server to remove.
     WorkerServer.prototype.removeServer = function (url)
     {
@@ -1303,9 +1554,9 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Requests that a named application cache be opened or created. Caches
-    /// are used for caching resources on the client. When the cache becomes
-    /// available a 'ready' event is emitted.
+    /// @summary Requests that a named application cache be opened or created.
+    /// Caches are used for caching resources on the client. When the cache
+    /// becomes available a 'ready' event is emitted.
     /// @param cacheName A string specifying the name of the application cache.
     WorkerServer.prototype.openCache = function (cacheName)
     {
@@ -1315,8 +1566,9 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Requests that a named application cache have its current contents
-    /// deleted. After deletion, resources will be requested from the server.
+    /// @summary Requests that a named application cache have its current
+    /// contents deleted. After deletion, resources will be requested from the
+    /// server instead of loaded from local disk cache.
     /// @param cacheName A string specifying the name of the application cache.
     WorkerServer.prototype.deleteCache = function (cacheName)
     {
@@ -1326,7 +1578,7 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Requests and begins loading a resource.
+    /// @summary Requests and begins loading a resource.
     /// @param args An object specifying the arguments associated with the
     /// GET_RESOURCE request.
     /// @param args.requestId An application-defined identifier for the
@@ -1363,8 +1615,9 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Constructor function for a type that communicates with a content server
-    /// running locally, on the same thread as the rest of the application.
+    /// @summary Constructor function for a type that communicates with a
+    /// content server running locally, on the same thread as the rest of the
+    /// application.
     /// @return A reference to the LocalServer.
     var LocalServer = function ()
     {
@@ -1377,7 +1630,8 @@ var ContentJS = (function (exports)
     };
     Emitter.mixin(LocalServer);
 
-    /// Performs any operations necessary to initialize the content server.
+    /// @summary Performs any operations necessary to initialize the content
+    /// server, including spawning any worker threads.
     /// @return A reference to the LocalServer.
     LocalServer.prototype.startup = function ()
     {
@@ -1387,7 +1641,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Immediately terminates the content server and background thread.
+    /// @summary Immediately terminates the content server.
     /// @return A reference to the LocalServer.
     LocalServer.prototype.shutdown = function ()
     {
@@ -1399,8 +1653,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Adds a URL to the list of servers used for downloading application
-    /// resources, allowing multiple resources to be downloaded in parallel.
+    /// @summary Adds a URL to the list of servers used for downloading
+    /// application resources, allowing multiple resources to be downloaded in
+    /// parallel.
     /// @param url The URL of the content server to add. If the origin is not
     /// the same as that of the requestor, the server must support CORS.
     LocalServer.prototype.addServer = function (url)
@@ -1408,32 +1663,34 @@ var ContentJS = (function (exports)
         this.server.addContentServer(url);
     };
 
-    /// Removes a URL from the list of servers used for downloading application
-    /// resources. Pending requests against this server will not be cancelled.
+    /// @summary Removes a URL from the list of servers used for downloading
+    /// application resources. Pending requests against this server will not be
+    /// cancelled.
     /// @param url The URL of the content server to remove.
     LocalServer.prototype.removeServer = function (url)
     {
         this.server.removeContentServer(url);
     };
 
-    /// Requests that a named application cache be opened or created. Caches
-    /// are used for caching resources on the client. When the cache becomes
-    /// available a 'ready' event is emitted.
+    /// @summary Requests that a named application cache be opened or created.
+    /// Caches are used for caching resources on the client. When the cache
+    /// becomes available a 'ready' event is emitted.
     /// @param cacheName A string specifying the name of the application cache.
     LocalServer.prototype.openCache = function (cacheName)
     {
         this.server.createDataStore(cacheName);
     };
 
-    /// Requests that a named application cache have its current contents
-    /// deleted. After deletiion, resources will be requested from the server.
+    /// @summary Requests that a named application cache have its current
+    /// contents deleted. After deletiion, resources will be requested from the
+    /// server instead of loading from local disk cache.
     /// @param cacheName A string specifying the name of the application cache.
     LocalServer.prototype.deleteCache = function (cacheName)
     {
         this.server.deleteDataStore(cacheName);
     };
 
-    /// Requests and begins loading a resource.
+    /// @summary Requests and begins loading a resource.
     /// @param args An object specifying the arguments associated with the
     /// GET_RESOURCE request.
     /// @param args.requestId An application-defined identifier for the
@@ -1462,7 +1719,7 @@ var ContentJS = (function (exports)
         this.server.requestResource(args);
     };
 
-    /// Handles an error event raised by the server.
+    /// @summary Handles an error event raised by the server.
     /// @param sender The ContentServer instance that raised the event.
     /// @param error A string describing the error.
     /// @param id The client-supplied request identifier.
@@ -1474,7 +1731,7 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Handles a message event raised by the server.
+    /// @summary Handles a message event raised by the server.
     /// @param sender The ContentServer instance that raised the event.
     /// @param data The data associated with the message.
     LocalServer.prototype.handleMessage = function (sender, data)
@@ -1499,21 +1756,38 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Constructor function for the Content type, which represents a loaded
-    /// (or loading) resource.
+    /// @summary Constructor function for the Content type, which represents a
+    /// loaded (or loading) resource.
+    /// @param sourcePackage The name of the package from which the content
+    /// item was loaded.
+    /// @param metadata An object specifying the generic metadata associated
+    /// with the content item.
+    /// @param metadata.name The name uniquely identifying the content item.
+    /// @param metadata.type A string specifying the type of content.
+    /// @param metadata.tags An array of strings specifying application-defined
+    /// metadata. Tags can be used to look up or filter assets at runtime.
+    /// @param metadata.data An array of strings specifying the filenames of
+    /// the content data files within the source archive.
     /// @return A reference to the new Content instance.
-    var Content = function ()
+    var Content = function (sourcePackage, metadata)
     {
         if (!(this instanceof Content))
-        {
             return new Content();
-        }
+
+        this.name          = metadata.name;
+        this.type          = metadata.type;
+        this.tags          = metadata.tags;
+        this.dataFiles     = metadata.data;
+        this.sourcePackage = sourcePackage;
+        this.runtimeData   = null;
+        this.attributes    = [];
+        this.listIndex     = 0;
         return this;
     };
 
-    /// Searches resource metadata to locate the first filename with a given
-    /// file extension. The file extension is considered to be anything after
-    /// the last occurrence of the period character.
+    /// @summary Searches resource metadata to locate the first filename with a
+    /// given file extension. The file extension is considered to be anything
+    /// after the last occurrence of the period character.
     /// @param extension The extension string, without leading period.
     /// @param metadata The resource metadata object.
     /// @param metadata.data Array of filenames associated with the resource.
@@ -1545,7 +1819,7 @@ var ContentJS = (function (exports)
         // else, returns undefined.
     };
 
-    /// Loads an object encoded as JSON from an archive entry.
+    /// @summary Loads an object encoded as JSON from an archive entry.
     /// @param filename The filename corresponding to the archive entry.
     /// @param archive An instance of the TarArchive type.
     /// @param defaultValue The value to return if the object cannot be loaded.
@@ -1562,12 +1836,13 @@ var ContentJS = (function (exports)
         return defaultValue;
     };
 
-    /// Loads an image from a JSON entry and returns it as a new Canvas.
+    /// @summary Loads an image from a JSON entry and returns it as a new
+    /// HTMLCanvasElement.
     /// @param filename The filename corresponding to the archive entry.
     /// @param archive An instance of the TarArchive type.
     /// @param width The width of the target image, in CSS pixels.
     /// @param height The height of the target image, in CSS pixels.
-    /// @return A new Canvas instance initialized with the image data.
+    /// @return A new HTMLCanvasElement initialized with the image data.
     Content.loadCanvas = function (filename, archive, width, height)
     {
         var canvas     = document.createElement('canvas');
@@ -1584,7 +1859,7 @@ var ContentJS = (function (exports)
         return canvas;
     };
 
-    /// Loads data from an entry of raw bytes and returns it as a new
+    /// @summary Loads data from an entry of raw bytes and returns it as a new
     /// Uint8Array ArrayBufferView.
     /// @param filename The filename corresponding to the archive entry.
     /// @param archive An instance of the TarArchive type.
@@ -1596,15 +1871,15 @@ var ContentJS = (function (exports)
         else        return null;
     };
 
-    /// Constructor function for the ContentLoader type, which maintains global
-    /// state for outstanding content requests and manages background
-    /// downloading and foreground parsing of resource packages.
+    /// @summary Constructor function for the ContentLoader type, which
+    /// maintains global state for outstanding content requests and manages
+    /// background downloading and foreground parsing of resource packages.
+    /// @return A reference to the new ContentLoader instance.
     var ContentLoader = function ()
     {
         if (!(this instanceof ContentLoader))
-        {
             return new ContentLoader();
-        }
+
         this.applicationName = '';       // string application name
         this.platformName    = '';       // string runtime platform name
         this.version         = 'latest'; // version to load from app manifest
@@ -1618,7 +1893,7 @@ var ContentJS = (function (exports)
     };
     Emitter.mixin(ContentLoader);
 
-    /// Connects the loader to the content server.
+    /// @summary Connects the loader to the content server.
     /// @param background Specify true to run the server on a background
     /// Web Worker thread instead of the main UI thread.
     /// @return A reference to the ContentLoader.
@@ -1634,7 +1909,8 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Disconnects from the content server. Any pending requests are canceled.
+    /// @summary Disconnects from the content server. Any pending requests are
+    /// canceled.
     /// @return A reference to the ContentLoader.
     ContentLoader.prototype.disconnect = function ()
     {
@@ -1647,8 +1923,8 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Requests that a named application cache be opened or created. Caches
-    /// are used for caching resources on the client.
+    /// @summary Requests that a named application cache be opened or created.
+    /// Caches are used for caching downloaded resources on the client.
     /// @param cacheName A string specifying the name of the application cache.
     /// @return A reference to the ContentLoader instance.
     ContentLoader.prototype.openCache = function (cacheName)
@@ -1658,8 +1934,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Requests that a named application cache have its current contents
-    /// deleted. After deletiion, resources will be requested from the server.
+    /// @summary Requests that a named application cache have its current
+    /// contents deleted. After deletiion, resources will be requested from the
+    /// server instead of loading from the cache.
     /// @param cacheName A string specifying the name of the application cache.
     /// @return A reference to the ContentLoader instance.
     ContentLoader.prototype.deleteCache = function (cacheName)
@@ -1669,8 +1946,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Adds a URL to the list of servers used for downloading application
-    /// resources, allowing multiple resources to be downloaded in parallel.
+    /// @summary Adds a URL to the list of servers used for downloading
+    /// application resources, allowing multiple resources to be downloaded in
+    //// parallel.
     /// @param url The URL of the content server to add. If the origin is not
     /// the same as that of the requestor, the server must support CORS.
     /// @return A reference to the ContentLoader instance.
@@ -1680,8 +1958,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Removes a URL from the list of servers used for downloading application
-    /// resources. Pending requests against this server will not be cancelled.
+    /// @summary Removes a URL from the list of servers used for downloading
+    /// application resources. Pending requests against this server will not be
+    /// cancelled.
     /// @param url The URL of the content server to remove.
     /// @return A reference to the ContentLoader instance.
     ContentLoader.prototype.removeServer = function (url)
@@ -1690,9 +1969,10 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Requests (or re-requests) the application manifest from the server. The
-    /// manifest is always downloaded and never retrieved from cache, unless
-    /// the user is disconnected from the network.
+    /// @summary Requests (or re-requests) the application manifest from the
+    /// server. The manifest is always downloaded and never retrieved from
+    /// cache, unless the user is disconnected from the network. The event
+    /// 'manifest:loaded' is emitted when the manifest is available.
     /// @param isOffline A boolean value where true indicates that the client
     /// is disconnected from the network.
     /// @return A reference to the ContentLoader instance.
@@ -1710,7 +1990,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Submits a load request for a resource package.
+    /// @summary Submits a load request for a resource package. The
+    /// 'group:ready' event is emitted when the package has been successfully
+    /// downloaded and unpacked.
     /// @param name The friendly name of the resource package to load.
     /// @param contentSet The ContentSet instance into which the package
     /// resources should be loaded.
@@ -1720,7 +2002,11 @@ var ContentJS = (function (exports)
         return this.loadPackageGroup(name, contentSet, [name]);
     };
 
-    /// Submits load requests for a logical grouping of resource packages.
+    /// @summary Submits load requests for a logical grouping of resource
+    /// packages. Applications define their groups based on their own
+    /// requirements; there are no system-defined groupings. The 'group:ready'
+    /// event is emitted when all packages have been successfully downloaded
+    /// and unpacked.
     /// @param groupName The friendly name of the resource package group.
     /// @param contentSet The ContentSet instance into which the resources
     /// should be loaded.
@@ -1763,7 +2049,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Finds the record representing a resource package.
+    /// @summary Finds the record representing a resource package.
     /// @param friendlyName A String specifying the friendly name of the
     /// resource package (ie. not the hash.package name.)
     /// @return An object storing the data associated with a resource package:
@@ -1788,8 +2074,8 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Determines whether all resources within a particular resource group
-    /// have been fully loaded.
+    /// @summary Determines whether all resources within a particular resource
+    /// group have been fully loaded.
     /// @param groupName The name of the resource group to check. If the
     /// ContentLoader.loadPackage() method was used, the group name is the
     /// friendly name of the resource package.
@@ -1810,8 +2096,9 @@ var ContentJS = (function (exports)
         return false;
     };
 
-    /// Executes a single update tick on the main UI thread where downloaded
-    /// resource packages are unpacked and transformed into runtime resources.
+    /// @summary Executes a single update tick on the main UI thread where
+    /// downloaded resource packages are unpacked and transformed into runtime
+    /// resources.
     /// @param maxTime The maximum amount of time the update tick should take,
     /// specified in milliseconds. If there are no pending resources to be
     /// unpacked and loaded, the function returns immediately.
@@ -1847,9 +2134,9 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Parses a loaded resource package archive and extracts and parses the
-    /// package manifest. This is an internal method that updates the current
-    /// unpack state.
+    /// @summary Parses a loaded resource package archive and extracts and
+    /// parses the package manifest. This is an internal method that updates
+    /// the current unpack state.
     /// @param bundle The record representing the resource package state.
     /// @param context Application-defined context data to be passed to any
     /// resource loaders.
@@ -1867,8 +2154,8 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Loads the next resource from a resource package. This is an internal
-    /// method that may update the current unpack state.
+    /// @summary Loads the next resource from a resource package. This is an
+    /// internal method that may update the current unpack state.
     /// @param bundle The record representing the resource package state.
     /// @param context Application-defined context data to be passed to any
     /// resource loaders.
@@ -1882,12 +2169,13 @@ var ContentJS = (function (exports)
         var count     = resources.length;
         var metadata  = resources[index];
         var resType   = metadata.type;
-        var content   = new Content();
+        var content   = new Content(bundle.friendlyName, metadata);
         try
         {
             this.emit(resType, {
                 loader       : this,
                 archive      : archive,
+                content      : content,
                 context      : context,
                 metadata     : metadata,
                 groupName    : bundle.groupName,
@@ -1895,6 +2183,7 @@ var ContentJS = (function (exports)
                 packageName  : bundle.friendlyName
             });
             bundle.unpackIndex++;
+            bundle.contentSet.addContent(content);
         }
         catch (error)
         {
@@ -1922,15 +2211,14 @@ var ContentJS = (function (exports)
                     context     : context,
                     metadata    : bundle.metadata,
                     groupName   : bundle.groupName,
-                    contentSet  : bundle.contentSet,
-                    packageName : bundle.friendlyName
+                    contentSet  : bundle.contentSet
                 });
             }
         }
         return this;
     };
 
-    /// Parses data for the application manifest.
+    /// @summary Parses data for the application manifest.
     /// @param data A string specifying the JSON-encoded application manifest.
     /// @return A reference to the ContentLoader instance.
     ContentLoader.prototype.processApplicationManifest = function (data)
@@ -1967,7 +2255,7 @@ var ContentJS = (function (exports)
         return this;
     };
 
-    /// Handles an error event generated by the server.
+    /// @summary Handles an error event generated by the server.
     /// @param data An object specifying data associated with the event.
     /// @param data.requestId An optional value containing the client
     /// identifier associated with the request. This field may be undefined if
@@ -1982,8 +2270,8 @@ var ContentJS = (function (exports)
         });
     };
 
-    /// Handles the cache ready event generated by the server. Once this event
-    /// is emitted, resources can be loaded and cached.
+    /// @summary Handles the cache ready event generated by the server. Once
+    /// this event is emitted, resources can be loaded and cached.
     /// @param data An object specifying the data associated with the event.
     /// @param data.name The name of the cache which is now in the ready state.
     ContentLoader.prototype.handleServerReady = function (data)
@@ -1999,8 +2287,8 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Handles the resource progress event generated by the server. Progress
-    /// events may occur multiple times for a single resource.
+    /// @summary Handles the resource progress event generated by the server.
+    /// Progress events may occur multiple times for a single resource.
     /// @param data An object specifying the data associated with the event.
     /// @param data.requestId The client identifier associated with the request.
     /// @param data.progress A number in [0, 100] indicating the percentage of
@@ -2023,8 +2311,8 @@ var ContentJS = (function (exports)
         }
     };
 
-    /// Handles the resource data event generated by the server when a resource
-    /// request has completed successfully and the data is available.
+    /// @summary Handles the resource data event generated by the server when a
+    /// resource request has completed successfully and the data is available.
     /// @param data An object specifying the data associated with the event.
     /// @param data.requestId The client identifier associated with the request.
     /// @param data.resourceUrl The URL from which the resource was or would
@@ -2050,7 +2338,7 @@ var ContentJS = (function (exports)
         else this.processApplicationManifest(data.resourceData);
     };
 
-    /// Creates and initializes a new ContentLoader instance.
+    /// @summary Creates and initializes a new ContentLoader instance.
     /// @param args An object specifying initialization data.
     /// @param args.applicationName A string specifying the application name.
     /// This value is used to resolve the application manifest file.
@@ -2086,12 +2374,23 @@ var ContentJS = (function (exports)
         return loader;
     }
 
+    /// @summary Creates a new, empty content set.
+    /// @return A reference to the new ContentSet instance.
+    function createContentSet()
+    {
+        return new ContentSet();
+    }
+
     /// Specify the data and functions exported from the module.
     exports.Emitter           = Emitter;
+    exports.Content           = Content;
+    exports.ContentSet        = ContentSet;
+    exports.ContentLoader     = ContentLoader;
+    exports.ContentServer     = ContentServer;
     exports.ClientCommand     = ClientCommand;
     exports.ServerCommand     = ServerCommand;
-    exports.ContentServer     = ContentServer;
     exports.createLoader      = createContentLoader;
+    exports.createContentSet  = createContentSet;
     exports.fileWithExtension = Content.fileWithExtension;
     exports.loadObject        = Content.loadObject;
     exports.loadCanvas        = Content.loadCanvas;

@@ -3,13 +3,14 @@
 /// @summary This command-line utility implements the content build process.
 /// The tool loads a project from the filesystem, determines changed, added and
 /// deleted files, and invokes the necessary data compilers.
+/// @author Russell Klenk (contact@russellklenk.com)
 ///////////////////////////////////////////////////////////////////////////80*/
 var Filesystem  = require('fs');
 var Path        = require('path');
 var Commander   = require('commander');
 var ContentJS   = require('../index');
 
-/// Constants representing the various application exit codes.
+/// @summary Constants representing the various application exit codes.
 var exit_code   = {
     /// The program has exited successfully.
     SUCCESS     : 0,
@@ -17,7 +18,7 @@ var exit_code   = {
     ERROR       : 1
 };
 
-/// Constants and global values used throughout the application module.
+/// @summary Constants and global values used throughout the application module.
 var application = {
     /// The name of the application module.
     NAME              : 'build',
@@ -38,7 +39,7 @@ var application = {
     remaining         : 0
 };
 
-/// Exits the application with an error.
+/// @summary Exits the application with an error.
 /// @param exitCode One of the values of the @a exit_code enumeration.
 /// @param data Optional additional data associated with the error.
 function programError(exitCode, data)
@@ -57,8 +58,8 @@ function programError(exitCode, data)
     process.exit(exitCode);
 }
 
-/// Callback invoked when the ProjectBuilder emits the 'error' event to
-/// indicate that an error occurred while spawning data compiler processes.
+/// @summary Callback invoked when the ProjectBuilder emits the 'error' event
+/// to indicate that an error occurred while spawning data compiler processes.
 /// @param builder The ProjectBuilder instance that raised the event.
 /// @param info An object specifying additional information about the error.
 /// @param info.resourceType A string specifying the resource type whose
@@ -78,8 +79,8 @@ function projectBuilderError(builder, info)
     process.exit(exit_code.ERROR);
 }
 
-/// Callback invoked when the ProjectBuilder emits the 'ready' event to
-/// indicate that the content pipeline is available and builds can begin.
+/// @summary Callback invoked when the ProjectBuilder emits the 'ready' event
+/// to indicate that the content pipeline is available and builds can begin.
 /// @param builder The ProjectBuilder instance that raised the event.
 function projectBuilderReady(builder)
 {
@@ -98,16 +99,16 @@ function projectBuilderReady(builder)
     }
 }
 
-/// Callback invoked when the ProjectBuilder emits the 'disposed' event to
-/// indicate that all content pipeline processes have been terminated.
+/// @summary Callback invoked when the ProjectBuilder emits the 'disposed'
+/// event to indicate that all content pipeline processes have been terminated.
 /// @param builder The ProjectBuilder instance that raised the event.
 function projectBuilderDisposed(builder)
 {
     process.exit(application.exitCode);
 }
 
-/// Callback invoked when the PackageBuilder emits the 'start' event to
-/// indicate that the build process has started for a content package.
+/// @summary Callback invoked when the PackageBuilder emits the 'start' event
+/// to indicate that the build process has started for a content package.
 /// @param builder The PackageBuilder instance that raised the event.
 /// @param info Additional information related to the event.
 /// @param info.projectName The name of the project the package belongs to.
@@ -125,8 +126,8 @@ function packageBuildStarted(builder, info)
     }
 }
 
-/// Callback invoked when the PackageBuilder emits the 'finish' event to
-/// indicate that the build process has started for a content package.
+/// @summary Callback invoked when the PackageBuilder emits the 'finish' event
+/// to indicate that the build process has started for a content package.
 /// @param builder The PackageBuilder instance that raised the event.
 /// @param info Additional information related to the event.
 /// @param info.projectName The name of the project the package belongs to.
@@ -177,7 +178,8 @@ function packageBuildFinished(builder, info)
     }
 }
 
-/// Callback invoked when a source file is submitted to a data compiler.
+/// @summary Callback invoked when a source file is submitted to a data
+/// compiler child process.
 /// @param builder The PackageBuilder instance that raised the event.
 /// @param info Additional information related to the event.
 /// @param info.projectName The name of the project the package belongs to.
@@ -199,7 +201,7 @@ function compileStarted(builder, info)
     }
 }
 
-/// Callback invoked when a source file is recompiled successfully.
+/// @summary Callback invoked when a source file is recompiled successfully.
 /// @param builder The PackageBuilder instance that raised the event.
 /// @param info Additional information related to the event.
 /// @param info.projectName The name of the project the package belongs to.
@@ -225,7 +227,8 @@ function compileSucceeded(builder, info)
     }
 }
 
-/// Callback invoked when a data compiler returned errors dueing a recompile.
+/// @summary Callback invoked when a data compiler returned errors during an
+/// asset recompile.
 /// @param builder The PackageBuilder instance that raised the event.
 /// @param info Additional information related to the event.
 /// @param info.projectName The name of the project the package belongs to.
@@ -251,7 +254,7 @@ function compileError(builder, info)
     }
 }
 
-/// Callback invoked when a source file is ignored (not recompiled).
+/// @summary Callback invoked when a source file is ignored (not recompiled).
 /// @param builder The PackageBuilder instance that raised the event.
 /// @param info Additional information related to the event.
 /// @param info.projectName The name of the project the package belongs to.
@@ -273,8 +276,8 @@ function sourceFileIgnored(builder, info)
     }
 }
 
-/// Processes any options specified on the command line. If necessary, help
-/// information is displayed and the application exits.
+/// @summary Processes any options specified on the command line. If necessary,
+/// help information is displayed and the application exits.
 /// @return An object whose properties are the configuration specified by the
 /// command-line arguments, with suitable defaults filled in where necessary.
 function processCommandLine()
@@ -296,9 +299,9 @@ function processCommandLine()
     };
 }
 
-/// Implements the entry point of the application. Command-line arguments are
-/// parsed, and if necessary help information is displayed and the program
-/// exits. The project is then loaded and the build process started.
+/// @summary Implements the entry point of the application. Command-line
+/// arguments are parsed, and if necessary help information is displayed and
+/// the program exits. The project is then loaded and the build process started.
 function main()
 {
     application.args            = processCommandLine();

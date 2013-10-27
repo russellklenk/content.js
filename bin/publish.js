@@ -4,6 +4,7 @@
 /// publishing process. The tool loads a project from the filesystem, and for
 /// each existing package and build target, archives the build output and
 /// generates the final package files.
+/// @author Russell Klenk (contact@russellklenk.com)
 ///////////////////////////////////////////////////////////////////////////80*/
 var Filesystem  = require('fs');
 var Path        = require('path');
@@ -11,7 +12,7 @@ var Crypto      = require('crypto');
 var Commander   = require('commander');
 var ContentJS   = require('../index');
 
-/// Constants representing the various application exit codes.
+/// @summary Constants representing the various application exit codes.
 var exit_code   = {
     /// The program has exited successfully.
     SUCCESS     : 0,
@@ -19,7 +20,7 @@ var exit_code   = {
     ERROR       : 1
 };
 
-/// Default application configuration values.
+/// @summary Default application configuration values.
 var defaults    = {
     /// The name of the publish configuration file to load under the project
     /// root directory.
@@ -32,7 +33,7 @@ var defaults    = {
     PUBLISH_TARGET    : 'dev'
 };
 
-/// Constants and global values used throughout the application module.
+/// @summary Constants and global values used throughout the application module.
 var application = {
     /// The name of the application module.
     NAME              : 'publish',
@@ -59,7 +60,7 @@ var application = {
     exitCode          : exit_code.SUCCESS
 };
 
-/// Exits the application with an error.
+/// @summary Exits the application with an error.
 /// @param exitCode One of the values of the @a exit_code enumeration.
 /// @param data Optional additional data associated with the error.
 function programError(exitCode, data)
@@ -78,7 +79,8 @@ function programError(exitCode, data)
     process.exit(exitCode);
 }
 
-/// Generates an object specifying the default application configuration.
+/// @summary Generates an object specifying the default application
+/// configuration.
 /// @return An object initialized with the default application configuration.
 function defaultConfiguration()
 {
@@ -89,7 +91,7 @@ function defaultConfiguration()
     return appConfig;
 }
 
-/// Writes an application configuration object out to a file.
+/// @summary Writes an application configuration object out to a file.
 /// @param config An object representing the application configuration to save.
 /// @param filename The path of the configuration file to write. Defaults to
 /// the file defaults.CONFIG_FILENAME in the current working directory.
@@ -115,8 +117,9 @@ function saveConfiguration(config, filename, silent)
     }
 }
 
-/// Attempts to load a configuration file containing application settings. If
-/// the file cannot be loaded, the default configuration is returned.
+/// @summary Attempts to load a configuration file containing application
+/// settings. If the file cannot be loaded, the default configuration is
+/// returned.
 /// @param filename The path of the configuration file to load. Defaults to
 /// the file defaults.CONFIG_FILENAME in the current working directory.
 /// @param silent Specify true to suppress any warning console output.
@@ -143,8 +146,8 @@ function loadConfiguration(filename, silent)
     }
 }
 
-/// Processes any options specified on the command line. If necessary, help
-/// information is displayed and the application exits.
+/// @summary Processes any options specified on the command line. If necessary,
+/// help information is displayed and the application exits.
 /// @return An object whose properties are the configuration specified by the
 /// command-line arguments, with suitable defaults filled in where necessary.
 function processCommandLine()
@@ -216,9 +219,9 @@ function processCommandLine()
     };
 }
 
-/// Ensures that the required directories exist, creating them if necessary,
-/// and updates the publish path and staging path to the full absolute path
-/// values that will be used at runtime.
+/// @summary Ensures that the required directories exist, creating them if
+/// necessary, and updates the publish path and staging path to the full
+/// absolute path values that will be used at runtime.
 function ensureDirectories()
 {
     var target      = application.publishTarget;
@@ -239,24 +242,24 @@ function ensureDirectories()
     }
 }
 
-/// Builds an array of the names of all content packages that exist for a given
-/// content project.
+/// @summary Builds an array of the names of all content packages that exist
+/// for a given content project.
 /// @return An array of string content package names.
 function enumeratePackages(project)
 {
     return (project ? Object.keys(project.packages) : []);
 }
 
-/// Builds an array of names of all build targets that exist for a given
-/// content package.
+/// @summary Builds an array of names of all build targets that exist for a
+/// given content package.
 /// @return An array of string target platform names.
 function enumerateTargets(bundle)
 {
     return (bundle  ? Object.keys(bundle.targets) : []);
 }
 
-/// Creates an object representing an empty project manifest. The manifest
-/// maintains the publish history for the project.
+/// @summary Creates an object representing an empty project manifest. The
+/// manifest maintains the publish history for the project.
 /// @return An object whose 'latest' field will be populated with data from the
 /// current publish attempt.
 function createEmptyProjectManifest()
@@ -270,8 +273,8 @@ function createEmptyProjectManifest()
     };
 }
 
-/// Compares two project manifest versions to determine if anything has
-/// changed in the current version.
+/// @summary Compares two project manifest versions to determine if anything
+/// has changed in the current version.
 /// @param manifestOld The object representing the existing project manifest.
 /// @param manifestNew The object representing the new project manifest.
 /// @return true if the project manifest has changed or false otherwise.
@@ -320,7 +323,8 @@ function projectManifestChanged(manifestOld, manifestNew)
     return false;
 }
 
-/// Constructs an updated project manifest from an old version and new version.
+/// @summary Constructs an updated project manifest from an old version and
+/// new version.
 /// @param manifestOld The object representing the existing project manifest.
 /// @param manifestNew The object representing the new project manifest.
 /// @return An object representing the merged project manifest.
@@ -346,7 +350,7 @@ function updateProjectManifest(manifestOld, manifestNew)
     return manifestOld;
 }
 
-/// Attempts to load any existing project manifest from disk.
+/// @summary Attempts to load any existing project manifest from disk.
 /// @return An object representing the existing project manifest, or null if
 /// no project manifest is located in the publish directory.
 function loadProjectManifest()
@@ -374,7 +378,7 @@ function loadProjectManifest()
     }
 }
 
-/// Writes a project manifest file to disk.
+/// @summary Writes a project manifest file to disk.
 /// @param manifest An object representing the project manifest.
 function saveProjectManifest(manifest)
 {
@@ -394,7 +398,7 @@ function saveProjectManifest(manifest)
     }
 }
 
-/// Computes a cryptographic hash value for the contents of a file.
+/// @summary Computes a cryptographic hash value for the contents of a file.
 /// @param path The path of the file to hash.
 /// @return The digest value, as a hexadecimal string.
 function hashFile(path)
@@ -424,7 +428,8 @@ function hashFile(path)
     return hash.digest('hex');
 }
 
-/// Implements the publish process for a single target resource package.
+/// @summary Implements the publish process for a single target resource
+/// package.
 /// @param project The content Project being published.
 /// @param bundle The Package being published.
 /// @param target The Target being published.
@@ -466,8 +471,8 @@ function publishTarget(project, bundle, target, manifest)
     manifest.latest.packages[platform] = pkgList;
 }
 
-/// Implements the publish process for a content package, enumerating and
-/// publishing each target resource package.
+/// @summary Implements the publish process for a content package, enumerating
+/// and publishing each target resource package.
 /// @param project The content Project being published.
 /// @param bundle The Package being published.
 /// @param manifest An object representing the in-memory project manifest. This
@@ -482,8 +487,8 @@ function publishPackage(project, bundle, manifest)
     }
 }
 
-/// Implements the publish process for a content project, enumerating and
-/// publishing each content package.
+/// @summary Implements the publish process for a content project, enumerating
+/// and publishing each content package.
 /// @param project The content Project being published.
 function publishProject(project)
 {
@@ -538,9 +543,9 @@ function publishProject(project)
     }
 }
 
-/// Implements the entry point of the application. Command-line arguments are
-/// parsed, and if necessary help information is displayed and the program
-/// exits. The project is then loaded and the build process started.
+/// @summary Implements the entry point of the application. Command-line
+/// arguments are parsed, and if necessary help information is displayed and
+/// the program exits. The project is then loaded and the build process started.
 function main()
 {
     application.args          = processCommandLine();

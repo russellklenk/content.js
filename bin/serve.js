@@ -5,6 +5,7 @@
 /// content.js. Three HTTP servers are provided; one for serving static web
 /// content, one for serving content manifests and resource package files, and
 /// one for processing control directives from the game.
+/// @author Russell Klenk (contact@russellklenk.com)
 ///////////////////////////////////////////////////////////////////////////80*/
 var Filesystem  = require('fs');
 var Url         = require('url');
@@ -15,7 +16,7 @@ var Process     = require('child_process');
 var Commander   = require('commander');
 var ContentJS   = require('../index');
 
-/// Constants representing the various application exit codes.
+/// @summary Constants representing the various application exit codes.
 var exit_code   = {
     /// The program has exited successfully.
     SUCCESS           : 0,
@@ -23,7 +24,7 @@ var exit_code   = {
     ERROR             : 1
 };
 
-/// Default application configuration values.
+/// @summary Default application configuration values.
 var defaults    = {
     /// The name of the server configuration file.
     CONFIG_FILENAME   : 'serve.json',
@@ -43,7 +44,7 @@ var defaults    = {
     CONTROL_PORT      : 55367
 };
 
-/// Constants and global values used throughout the application module.
+/// @summary Constants and global values used throughout the application module.
 var application = {
     /// The name of the application module.
     NAME              : 'serve',
@@ -60,7 +61,7 @@ var application = {
     exitCode          : exit_code.SUCCESS
 };
 
-/// Constants representing the state of a pending build request.
+/// @summary Constants representing the state of a pending build request.
 var build_state = {
     /// The build is in-progress. Either build or publish is executing.
     STARTED           : 0,
@@ -70,7 +71,7 @@ var build_state = {
     ERROR             : 2
 };
 
-/// Exits the application with an error.
+/// @summary Exits the application with an error.
 /// @param exitCode One of the values of the @a exit_code enumeration.
 /// @param data Optional additional data associated with the error.
 function programError(exitCode, data)
@@ -89,7 +90,7 @@ function programError(exitCode, data)
     process.exit(exitCode);
 }
 
-/// Generates an object specifying the default application configuration.
+/// @summary Generates an object specifying the default application configuration.
 /// @return An object initialized with the default application configuration.
 function defaultConfiguration()
 {
@@ -112,7 +113,7 @@ function defaultConfiguration()
     return appConfig;
 }
 
-/// Writes an application configuration object out to a file.
+/// @summary Writes an application configuration object out to a file.
 /// @param config An object representing the application configuration to save.
 /// @param filename The path of the configuration file to write. Defaults to
 /// the file defaults.CONFIG_FILENAME in the current working directory.
@@ -138,8 +139,9 @@ function saveConfiguration(config, filename, silent)
     }
 }
 
-/// Attempts to load a configuration file containing application settings. If
-/// the file cannot be loaded, the default configuration is returned.
+/// @summary Attempts to load a configuration file containing application
+/// settings. If the file cannot be loaded, the default configuration is
+/// returned.
 /// @param filename The path of the configuration file to load. Defaults to
 /// the file defaults.CONFIG_FILENAME in the current working directory.
 /// @param silent Specify true to suppress any warning console output.
@@ -166,8 +168,8 @@ function loadConfiguration(filename, silent)
     }
 }
 
-/// Processes any options specified on the command line. If necessary, help
-/// information is displayed and the application exits.
+/// @summary Processes any options specified on the command line. If necessary,
+/// help information is displayed and the application exits.
 /// @return An object whose properties are the configuration specified by the
 /// command-line arguments, with suitable defaults filled in where necessary.
 function processCommandLine()
@@ -241,7 +243,7 @@ function processCommandLine()
     };
 }
 
-/// Registers custom MIME types with the mime module.
+/// @summary Registers custom MIME types with the mime module.
 function registerMimeTypes()
 {
     MIME.define({
@@ -250,7 +252,8 @@ function registerMimeTypes()
     });
 }
 
-/// Creates an object representing the state associated with a build request.
+/// @summary Creates an object representing the state associated with a build
+/// request.
 /// @return An object representing the state associated with the build request.
 /// obj.state One of the values of the build_state enumeration.
 /// obj.resource The resource URL used by clients to poll for build status.
@@ -288,7 +291,8 @@ function createBuildRequest()
     };
 }
 
-/// Determines whether any build request is outstanding and if so, returns it.
+/// @summary Determines whether any build request is outstanding and if so,
+/// returns it.
 /// @return An object representing the outstanding build request, or undefined.
 function outstandingRequest()
 {
@@ -303,8 +307,8 @@ function outstandingRequest()
     }
 }
 
-/// Callback invoked on a fixed interface to free resources associated with
-/// any expired build requests.
+/// @summary Callback invoked on a fixed interface to free resources associated
+/// with any expired build requests.
 function pruneExpiredRequests()
 {
     var STARTED = build_state.STARTED;
@@ -327,7 +331,7 @@ function pruneExpiredRequests()
         });
 }
 
-/// Completes a request by writing the response back to any registered
+/// @summary Completes a request by writing the response back to any registered
 /// listeners and closing each outstanding listener's HTTP request.
 /// @param request The build request being completed.
 function completeRequest(request)
@@ -361,7 +365,7 @@ function completeRequest(request)
     request.listeners           = [];
 }
 
-/// Spawns a child process to build the project. The build executes
+/// @summary Spawns a child process to build the project. The build executes
 /// asynchronously and the state of the current build is updated when the
 /// process exits based on the process exit code.
 /// @param request An object representing the build request.
@@ -401,9 +405,9 @@ function executeBuild(request)
     }
 }
 
-/// Spawns a child process to publish the project. The publish process executes
-/// asynchronously and the state of the current build is updated when the
-/// process exits based on the process exit code.
+/// @summary Spawns a child process to publish the project. The publish process
+/// executes asynchronously and the state of the current build is updated when
+/// the process exits based on the process exit code.
 /// @param request An object representing the build request.
 function executePublish(request)
 {
@@ -443,7 +447,7 @@ function executePublish(request)
     }
 }
 
-/// Spawns the HTTP server responsible for serving static web content.
+/// @summary Spawns the HTTP server responsible for serving static web content.
 function spawnStaticServer()
 {
     HTTP.createServer(function (req, res)
@@ -483,8 +487,8 @@ function spawnStaticServer()
     }
 }
 
-/// Spawns the HTTP server responsible for serving content manifest and
-/// resource package files representing the build output.
+/// @summary Spawns the HTTP server responsible for serving content manifest
+/// and resource package files representing the build output.
 function spawnContentServer()
 {
     HTTP.createServer(function (req, res)
@@ -525,7 +529,7 @@ function spawnContentServer()
     }
 }
 
-/// Spawns the HTTP server responsible for handling control requests.
+/// @summary Spawns the HTTP server responsible for handling control requests.
 function spawnControlServer()
 {
     HTTP.createServer(function (req, res)
@@ -579,7 +583,8 @@ function spawnControlServer()
     }
 }
 
-/// Performs any application-level cleanup when the process is terminating.
+/// @summary Performs any application-level cleanup when the process is
+/// terminating.
 function shutdown()
 {
     if (!application.args.silent)
@@ -596,14 +601,14 @@ function shutdown()
     process.exit(exit_code.SUCCESS);
 }
 
-/// Register signal handlers to shut down the application.
+/// @summary Register signal handlers to shut down the application.
 process.on('SIGINT',  shutdown);
 process.on('SIGTERM', shutdown);
 process.on('unhandledException', shutdown);
 
-/// Implements the entry point of the application. Command-line arguments are
-/// parsed, and if necessary help information is displayed and the program
-/// exits. The servers are then started.
+/// @summary Implements the entry point of the application. Command-line
+/// arguments are parsed, and if necessary help information is displayed and
+/// the program exits. The servers are then started.
 function main()
 {
     application.args     = processCommandLine();
