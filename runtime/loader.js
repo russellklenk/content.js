@@ -24,7 +24,7 @@ var LoadEvent     = {
     /// Indicates that the UI content is loaded and fully unpacked. Moves the
     /// current state to LoadState.LOAD_CONTENT.
     UI_READY      : 4,
-    /// Indicates that the main content group is loaded and fully unpacked.
+    /// Indicates that the primary content group is loaded and fully unpacked.
     /// Moves the current state to LoadState.READY.
     CONTENT_READY : 5,
     /// Indicates that a reload request has been received.
@@ -50,8 +50,8 @@ var LoadState     = {
     LOAD_SPLASH   : 3,
     /// Waiting for the UI content group to load.
     LOAD_UI       : 4,
-    /// Waiting for the main content group to load.
-    LOAD_CONTENT  : 5,
+    /// Waiting for the primary content group to load.
+    LOAD_PRIMARY  : 5,
     /// All content groups have loaded and unpacked successfully and the loader
     /// is waiting in an idle state.
     READY         : 6
@@ -61,7 +61,7 @@ var LoadState     = {
 var ContentGroup  = {
     SPLASH        : 'splash',
     UI            : 'ui',
-    MAIN          : 'main'
+    PRIMARY       : 'main'
 };
 
 /// @summary Defines the names of the content bundles within each content
@@ -70,7 +70,7 @@ var ContentGroup  = {
 var ContentBundle = {
     SPLASH        : ['splash'],
     UI            : ['ui'],
-    MAIN          : ['main']
+    PRIMARY       : ['main']
 };
 
 /// @summary Constructor function for the ContentLoader type, which manages
@@ -83,14 +83,14 @@ var ContentLoader = function ()
     if (!(this instanceof ContentLoader))
         return new ContentLoader();
 
-    this.state         = LoadState.STARTUP;
-    this.canPresent    = false;
-    this.loader        = null;
-    this.events        = [];
-    this.content       = {};
-    this.uiContent     = {};
-    this.splashContent = {};
-    this.eventCount    = 0;
+    this.state          = LoadState.STARTUP;
+    this.canPresent     = false;
+    this.loader         = null;
+    this.events         = [];
+    this.uiContent      = {};
+    this.splashContent  = {};
+    this.primaryContent = {};
+    this.eventCount     = 0;
     return this;
 };
 ContentJS.Emitter.mixin(ContentLoader);
@@ -100,20 +100,20 @@ ContentJS.Emitter.mixin(ContentLoader);
 /// @return The ContentLoader.
 ContentLoader.prototype.init = function ()
 {
-    this.state         = LoadState.STARTUP;
-    this.canPresent    = false;
-    this.events        = [];
-    this.content       = {};
-    this.uiContent     = {};
-    this.splashContent = {};
-    this.eventCount    = 0;
-    this.loader        = ContentJS.createLoader({
-        scriptPath     : 'scripts/content.js/',
-        applicationName: 'prototype',
-        platformName   : 'generic',
-        version        : 'latest',
-        background     : false,
-        servers        : [
+    this.state          = LoadState.STARTUP;
+    this.canPresent     = false;
+    this.events         = [];
+    this.eventCount     = 0;
+    this.uiContent      = ContentJS.createContentSet();
+    this.splashContent  = ContentJS.createContentSet();
+    this.primaryContent = ContentJS.createContentSet();
+    this.loader         = ContentJS.createLoader({
+        scriptPath      : 'scripts/content.js/',
+        applicationName : 'prototype',
+        platformName    : 'generic',
+        version         : 'latest',
+        background      : false,
+        servers         : [
             'http://localhost:55366'
         ]
     });
@@ -177,8 +177,8 @@ ContentLoader.prototype.tick = function ()
             case LoadState.LOAD_UI:
                 state = this.state_LoadInterface(ev);
                 break;
-            case LoadState.LOAD_CONTENT:
-                state = this.state_LoadContent(ev);
+            case LoadState.LOAD_PRIMARY:
+                state = this.state_LoadPrimary(ev);
                 break;
             case LoadState.READY:
                 state = this.state_Ready(ev);
@@ -188,6 +188,7 @@ ContentLoader.prototype.tick = function ()
         active = state;
     }
     this.state = active;
+    this.eventCount = 0;
     this.loader.unpackResources(16);
     return this;
 };
@@ -197,7 +198,7 @@ ContentLoader.prototype.tick = function ()
 /// @return The ContentLoader.
 ContentLoader.prototype.reload = function ()
 {
-    this.push(LoadEvent.RELOAD);
+    this.post(LoadEvent.RELOAD);
     return this;
 };
 
@@ -275,6 +276,11 @@ ContentLoader.prototype.request_BuildStatus = function (buildUrl)
                 var data = JSON.parse(json);
                 if (data.success)
                 {
+                    // during the initial load, the ContentJS.ContentLoader
+                    // requests the application manifest automatically when
+                    // the cache becomes ready, but during a reload, we must
+                    // perform that step manually.
+                    self.loader.loadApplicationManifest(navigator.onLine);
                     self.post(LoadEvent.START_LOADING);
                     self.emit('rebuild:success', this);
                 }
@@ -310,7 +316,6 @@ ContentLoader.prototype.state_Startup = function (ev)
     if (ev !== LoadEvent.START_LOADING)
         return LoadState.STARTUP;
 
-    this.loader.loadApplicationManifest(navigator.onLine);
     return LoadState.LOAD_MANIFEST;
 };
 
@@ -324,7 +329,7 @@ ContentLoader.prototype.state_Error = function (ev)
         return LoadState.ERROR;
 
     this.request_Rebuild();
-    return LoadState.ERROR;
+    return LoadState.STARTUP;
 };
 
 /// @summary Implements the logic for the LOAD_MANIFEST state.
@@ -357,7 +362,7 @@ ContentLoader.prototype.state_LoadSplash = function (ev)
     var bundles   = ContentBundle.UI;
     var content   = this.uiContent;
     this.loader.loadPackageGroup(groupName, content, bundles);
-    this.emit('load:splash', this);
+    this.emit('load:splash', this, this.splashContent);
     return LoadState.LOAD_UI;
 };
 
@@ -370,23 +375,24 @@ ContentLoader.prototype.state_LoadInterface = function (ev)
     if (ev !== LoadEvent.UI_READY)
         return LoadState.LOAD_MANIFEST;
 
-    var groupName = ContentGroup.MAIN;
-    var bundles   = ContentBundle.MAIN;
+    var groupName = ContentGroup.PRIMARY;
+    var bundles   = ContentBundle.PRIMARY;
     var content   = this.content;
     this.loader.loadPackageGroup(groupName, content, bundles);
-    this.emit('load:ui', this);
-    return LoadState.LOAD_CONTENT;
+    this.emit('load:ui', this, this.uiContent);
+    return LoadState.LOAD_PRIMARY;
 };
 
-/// @summary Implements the logic for the LOAD_CONTENT state.
+/// @summary Implements the logic for the LOAD_PRIMARY state.
 /// @param ev One of the values of the LoadEvent enumeration.
 /// @return One of the values of the LoadState enumeration representing the
 /// new active state of the load process.
-ContentLoader.prototype.state_LoadContent = function (ev)
+ContentLoader.prototype.state_LoadPrimary = function (ev)
 {
     if (ev !== LoadEvent.CONTENT_READY)
         return LoadState.LOAD_CONTENT;
 
+    this.emit('load:primary',  this, this.content);
     this.emit('load:complete', this);
     return LoadState.READY;
 };
@@ -401,7 +407,7 @@ ContentLoader.prototype.state_Ready = function (ev)
         return LoadState.READY;
 
     this.request_Rebuild();
-    return LoadState.READY;
+    return LoadState.STARTUP;
 };
 
 /// @summary Callback invoked when ContentJS reports an error trying to

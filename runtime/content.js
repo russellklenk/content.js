@@ -851,6 +851,40 @@ var ContentJS = (function (exports)
         return index;
     };
 
+    /// @summary Creates a list describing all of the items currently contained
+    /// in the content set. Each object in the returned list describes a single
+    /// content item, and each content item name appears only once.
+    /// @param filterTag An optional value that can be used to narrow the
+    /// search to a single item. If undefined, and multiple content items match
+    /// a particular name, the first matching item is returned in the list.
+    /// @return A list of objects describing the content items in the set. Each
+    /// object in the returned list has the following fields:
+    /// obj.name The string name of the content item.
+    /// obj.type The string type of the content item.
+    /// obj.tags An array of strings specifying application-defined metadata.
+    /// obj.attributes An object specifying content attributes determined at 
+    /// runtime, for example, the width and height of an image. The fields of 
+    /// this object vary depending on the type of the content item.
+    ContentSet.prototype.describeContent = function (filterTag)
+    {
+        var itemNames = Object.keys(this.byNameTable);
+        var itemList  = new Array(itemNames.length);
+        for (var key in itemNames)
+        {
+            var item  = this.contentByName(key, filterTag);
+            if (item)
+            {
+                itemList.push({
+                    name      : item.name, 
+                    type      : item.type, 
+                    tags      : item.tags, 
+                    attributes: item.attributes
+                });
+            }
+        }
+        return itemList;
+    };
+
     /// @summary Constructor function for a type representing a single
     /// outstanding cache request against a DataStore.
     /// @param store The DataStore instance that issued the request.
@@ -1780,7 +1814,7 @@ var ContentJS = (function (exports)
         this.dataFiles     = metadata.data;
         this.sourcePackage = sourcePackage;
         this.runtimeData   = null;
-        this.attributes    = [];
+        this.attributes    = {};
         this.listIndex     = 0;
         return this;
     };
@@ -2167,38 +2201,43 @@ var ContentJS = (function (exports)
         var archive   = bundle.archive;
         var index     = bundle.unpackIndex;
         var count     = resources.length;
-        var metadata  = resources[index];
-        var resType   = metadata.type;
-        var content   = new Content(bundle.friendlyName, metadata);
-        try
+        if (count > 0)
         {
-            this.emit(resType, {
-                loader       : this,
-                archive      : archive,
-                content      : content,
-                context      : context,
-                metadata     : metadata,
-                groupName    : bundle.groupName,
-                contentSet   : bundle.contentSet,
-                packageName  : bundle.friendlyName
-            });
-            bundle.unpackIndex++;
-            bundle.contentSet.addContent(content);
-        }
-        catch (error)
-        {
-            this.unpackQueue.shift();
-            bundle.unpackState = UnpackState.ERROR;
-            this.emit('group:error', {
-                loader      : this,
-                error       : error,
-                archive     : archive,
-                context     : context,
-                metadata    : bundle.metadata,
-                groupName   : bundle.groupName,
-                contentSet  : bundle.contentSet,
-                packageName : bundle.friendlyName
-            });
+            // the bundle contains at least one content item.
+            // load it from the archive and transform it into runtime data.
+            var metadata  = resources[index];
+            var resType   = metadata.type;
+            var content   = new Content(bundle.friendlyName, metadata);
+            try
+            {
+                this.emit(resType, {
+                    loader       : this,
+                    archive      : archive,
+                    content      : content,
+                    context      : context,
+                    metadata     : metadata,
+                    groupName    : bundle.groupName,
+                    contentSet   : bundle.contentSet,
+                    packageName  : bundle.friendlyName
+                });
+                bundle.unpackIndex++;
+                bundle.contentSet.addContent(content);
+            }
+            catch (error)
+            {
+                this.unpackQueue.shift();
+                bundle.unpackState = UnpackState.ERROR;
+                this.emit('group:error', {
+                    loader      : this,
+                    error       : error,
+                    archive     : archive,
+                    context     : context,
+                    metadata    : bundle.metadata,
+                    groupName   : bundle.groupName,
+                    contentSet  : bundle.contentSet,
+                    packageName : bundle.friendlyName
+                });
+            }
         }
         if (bundle.unpackIndex === count)
         {
