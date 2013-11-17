@@ -622,12 +622,7 @@ var ContentJS = (function (exports)
             return new ContentSet();
 
         this.content        = [];
-        this.packages       = [];
-        this.emptyList      = [];
-        this.byTagTable     = {};
         this.byNameTable    = {};
-        this.byTypeTable    = {};
-        this.byPackageTable = {};
         return this;
     };
 
@@ -636,11 +631,7 @@ var ContentJS = (function (exports)
     ContentSet.prototype.clear = function ()
     {
         this.content        = [];
-        this.packages       = [];
-        this.byTagTable     = {};
         this.byNameTable    = {};
-        this.byTypeTable    = {};
-        this.byPackageTable = {};
         return this;
     };
 
@@ -656,10 +647,6 @@ var ContentJS = (function (exports)
         content.listIndex = index;
         this.content.push(content);
 
-        // add the source package name if it is currently unknown.
-        if (this.packages.indexOf(content.sourcePackage) < 0)
-            this.packages.push(content.sourcePackage);
-
         // allow the content to be looked up by name.
         var nameList = this.byNameTable[content.name];
         if (nameList === undefined)
@@ -668,37 +655,6 @@ var ContentJS = (function (exports)
             this.byNameTable[content.name] = nameList;
         }
         else nameList.push(content);
-
-        // allow the content to be looked up by type.
-        var typeList = this.byTypeTable[content.type];
-        if (typeList === undefined)
-        {
-            typeList = [content];
-            this.byTypeTable[content.type] = typeList;
-        }
-        else typeList.push(content);
-
-        // allow the content to be looked up by source package.
-        var packList = this.byPackageTable[content.sourcePackage];
-        if (packList === undefined)
-        {
-            packList = [content];
-            this.byPackageTable[content.sourcePackage] = packList;
-        }
-        else packList.push(content);
-
-        // allow the content to be looked up by tag.
-        var tags   = content.tags;
-        for (var i = 0, n = tags.length; i < n; ++i)
-        {
-            var tagList = this.byTagTable[tags[i]];
-            if (tagList === undefined)
-            {
-                tagList = [content];
-                this.byTagTable[tags[i]] = tagList;
-            }
-            else tagList.push(content);
-        }
 
         return index;
     };
@@ -713,42 +669,6 @@ var ContentJS = (function (exports)
         if (nameList === undefined)
             nameList   = this.emptyList;
         return nameList;
-    };
-
-    /// @summary Retrieves the set of all content with a given type.
-    /// @param type A string specifying the type of content to retrieve.
-    /// @return An array of all content items with the specified type. Do not
-    /// modify the returned array.
-    ContentSet.prototype.allContentByType = function (type)
-    {
-        var typeList   = this.byTypeTable[type];
-        if (typeList === undefined)
-            typeList   = this.emptyList;
-        return typeList;
-    };
-
-    /// @summary Retrieves the set of all content associated with a given tag.
-    /// @param tag The string metadata tag.
-    /// @return An array of all content items with the specified tag. Do not
-    /// modify the returned array.
-    ContentSet.prototype.allContentWithTag = function (tag)
-    {
-        var itemList   = this.byTagTable[tag];
-        if (itemList === undefined)
-            itemList   = this.emptyList;
-        return itemList;
-    };
-
-    /// @summary Retrieves the set of all content from a given source package.
-    /// @param packageName The name of the content package.
-    /// @return An array of all content items loaded from the specified source
-    /// package. Do not modify the returned array.
-    ContentSet.prototype.allContentFromPackage = function (packageName)
-        {
-        var packList   = this.byPackageTable[packageName];
-        if (packList === undefined)
-            packList   = this.emptyList;
-        return packList;
     };
 
     /// @summary Retrieve the first content item with a given name that also
@@ -824,36 +744,16 @@ var ContentJS = (function (exports)
         var nameList        = this.byNameTable[oldContent.name];
         var nameIndex       = nameList.indexOf(oldContent);
         nameList[nameIndex] = newContent;
-
-        var typeList        = this.byTypeTable[oldContent.type];
-        var typeIndex       = typeList.indexOf(oldContent);
-        typeList[typeIndex] = newContent;
-
-        var packList        = this.byPackageTable[oldContent.sourcePackage];
-        var packIndex       = packList.indexOf(oldContent);
-        packList[packIndex] = newContent;
-
-        var keyList  = Object.keys(this.byTagTable);
-        var keyCount = keyList.length;
-        for (var i = 0; i < keyCount; ++i)
-        {
-            var tagList   = this.byTagTable[keyList[i]];
-            var tagIndex  = tagList.indexOf(oldContent);
-            if (tagIndex >= 0)
-            {
-                if (newContent.tags.indexOf(keyList[i]) >= 0)
-                    tagList[tagIndex] = newContent;
-                else
-                    tagList[tagIndex].splice(tagIndex, 1);
-            }
-        }
-        // @note: won't pick up any new tags, but that's okay.
         return index;
     };
 
     /// @summary Creates a list describing all of the items currently contained
     /// in the content set. Each object in the returned list describes a single
     /// content item, and each content item name appears only once.
+    /// @param itemRefs An optional array to which item references may be 
+    /// appended. The items in this list will be Content instances, and will 
+    /// have a one-to-one correspondence with the descriptor objects in the 
+    /// returned list. This list represents the set of 'active' items.
     /// @param filterTag An optional value that can be used to narrow the
     /// search to a single item. If undefined, and multiple content items match
     /// a particular name, the first matching item is returned in the list.
@@ -865,8 +765,19 @@ var ContentJS = (function (exports)
     /// obj.attributes An object specifying content attributes determined at 
     /// runtime, for example, the width and height of an image. The fields of 
     /// this object vary depending on the type of the content item.
-    ContentSet.prototype.describeContent = function (filterTag)
+    ContentSet.prototype.describeContent = function (itemRefs, filterTag)
     {
+        // if item refs was specified by the caller, populate it; otherwise, 
+        // sub in a dummy object with a no-op push() method so we don't have
+        // to constantly check for null within the loop.
+        itemRefs = itemRefs || {
+            push : function (itemRefUnused)
+            {
+                /* empty */
+            }
+        };
+
+        var index     = 0;
         var itemNames = Object.keys(this.byNameTable);
         var itemList  = new Array(itemNames.length);
         for (var key in itemNames)
@@ -874,12 +785,15 @@ var ContentJS = (function (exports)
             var item  = this.contentByName(key, filterTag);
             if (item)
             {
+                itemRefs.push(item);
                 itemList.push({
                     name      : item.name, 
                     type      : item.type, 
                     tags      : item.tags, 
-                    attributes: item.attributes
+                    attributes: item.attributes, 
+                    handle    : index
                 });
+                ++index;
             }
         }
         return itemList;
@@ -1802,19 +1716,22 @@ var ContentJS = (function (exports)
     /// metadata. Tags can be used to look up or filter assets at runtime.
     /// @param metadata.data An array of strings specifying the filenames of
     /// the content data files within the source archive.
+    /// @param archive The TarArchive containing the file data. This reference 
+    /// is saved so that deferred loading can be supported.
     /// @return A reference to the new Content instance.
-    var Content = function (sourcePackage, metadata)
+    var Content = function (sourcePackage, metadata, archive)
     {
         if (!(this instanceof Content))
-            return new Content();
+            return new Content(sourcePackage, metadata, archive);
 
         this.name          = metadata.name;
         this.type          = metadata.type;
         this.tags          = metadata.tags;
         this.dataFiles     = metadata.data;
         this.sourcePackage = sourcePackage;
-        this.runtimeData   = null;
+        this.archive       = archive;
         this.attributes    = {};
+        this.runtimeData   = {};
         this.listIndex     = 0;
         return this;
     };
@@ -1903,6 +1820,30 @@ var ContentJS = (function (exports)
         var entry = archive.getEntryByName(filename);
         if (entry)  return archive.dataAsUint8Array(entry);
         else        return null;
+    };
+
+    /// @summary Resets the attributes and runtime data fields of the content 
+    /// item. The archive reference is maintained so that data may be reloaded
+    /// at a later point in time.
+    /// @return The Content.
+    Content.prototype.unload = function ()
+    {
+        this.attributes  = {};
+        this.runtimeData = {};
+        return this;
+    };
+
+    /// @summary Clears the tags, data files, archive, attributes and runtime 
+    /// data fields of the content item.
+    /// @return The Content.
+    Content.prototype.destroy = function ()
+    {
+        this.tags          = [];
+        this.dataFiles     = [];
+        this.archive       = null;
+        this.attributes    = {};
+        this.runtimeData   = {};
+        return this;
     };
 
     /// @summary Constructor function for the ContentLoader type, which
@@ -2207,7 +2148,7 @@ var ContentJS = (function (exports)
             // load it from the archive and transform it into runtime data.
             var metadata  = resources[index];
             var resType   = metadata.type;
-            var content   = new Content(bundle.friendlyName, metadata);
+            var content   = new Content(bundle.friendlyName, metadata, archive);
             try
             {
                 this.emit(resType, {
